@@ -1,0 +1,8 @@
+{
+  "appId": "com.pozocomun.app",
+  "appName": "Pozo Común",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
