@@ -57,8 +57,11 @@ export function computeMissingRows(habits, users, habitLogs) {
   const monthStart = new Date(t.getFullYear(), t.getMonth(), 1);
   const rows = [];
   habits.forEach((habit) => {
+    // Un hábito nunca penaliza días anteriores a su propia creación.
+    const habitStart = habit.created_at ? stripTime(new Date(habit.created_at)) : monthStart;
+    const rangeStart = habitStart > monthStart ? habitStart : monthStart;
     users.forEach((u) => {
-      let d = new Date(monthStart);
+      let d = new Date(rangeStart);
       while (d < t) {
         if (habit.days.includes(d.getDay())) {
           const key = dateKey(d);

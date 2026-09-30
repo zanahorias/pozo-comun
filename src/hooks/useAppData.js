@@ -166,6 +166,18 @@ export function useAppData() {
     fetchAll();
   }
 
+  async function deleteHabit(habitId) {
+    // Se desactiva en vez de borrar de verdad, para no perder el historial
+    // de días ya registrados con ese hábito.
+    await supabase.from('habits').update({ active: false }).eq('id', habitId);
+    fetchAll();
+  }
+
+  async function deleteReward(rewardId) {
+    await supabase.from('rewards').update({ active: false }).eq('id', rewardId);
+    fetchAll();
+  }
+
   return {
     users,
     habits,
@@ -182,7 +194,9 @@ export function useAppData() {
       logRun,
       redeem,
       addHabit,
-      addReward
+      addReward,
+      deleteHabit,
+      deleteReward
     }
   };
 }
