@@ -25,11 +25,14 @@ jobs:
 
       - name: Crear .env con los datos de Supabase
         run: |
-          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .env
-          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env
+          echo "VITE_SUPABASE_URL=${{secrets.VITE_SUPABASE_URL}}" >> .env
+          echo "VITE_SUPABASE_ANON_KEY=${{secrets.VITE_SUPABASE_ANON_KEY}}" >> .env
 
       - name: Compilar la app web
-        run: npm run build
+      env:
+        VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      run: npm run build
 
       - name: Agregar plataforma Android
         run: npx cap add android
