@@ -111,6 +111,9 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
                   <div className="hmeta">{dayLabels} · meta {h.target} {h.unit}/día</div>
                 </div>
                 <div className="habit-pts">hasta +{h.points}</div>
+                {isAdmin && (
+                  <button className="rm" onClick={() => window.confirm(`¿Eliminar "${h.name}"?`) && actions.deleteHabit(h.id)}>✕</button>
+                )}
               </div>
               <div className="qty-block">
                 <div className="qty-bar-row"><span><b>{amount}</b> / {h.target} {h.unit}</span><span>{pct}%</span></div>
@@ -142,6 +145,9 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
                 <div className="hmeta">{dayLabels}{scheduledToday ? '' : ' · no corresponde hoy'}</div>
               </div>
               <div className="habit-pts">+{h.points}</div>
+              {isAdmin && (
+                <button className="rm" onClick={() => window.confirm(`¿Eliminar "${h.name}"?`) && actions.deleteHabit(h.id)}>✕</button>
+              )}
             </div>
             <WeekStrip habit={h} currentUser={currentUser} habitLogs={habitLogs} />
           </div>

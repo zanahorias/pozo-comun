@@ -38,7 +38,12 @@ export default function Shop({ rewards, habitLogs, redemptions, currentUser, isA
       <div className="reward-grid">
         {sorted.map((r) => (
           <div className="reward-card" key={r.id}>
-            <div className="reward-emoji">{r.emoji}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="reward-emoji">{r.emoji}</div>
+              {isAdmin && (
+                <button className="rm" onClick={() => window.confirm(`¿Eliminar "${r.name}"?`) && actions.deleteReward(r.id)}>✕</button>
+              )}
+            </div>
             <div className="reward-name">{r.name}</div>
             <div className="reward-desc">{r.description}</div>
             <div className="reward-cost">{r.cost_points} pts</div>
