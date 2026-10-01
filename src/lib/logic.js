@@ -1,10 +1,18 @@
 import { stripTime, dateKey, today } from './dates';
 
-export function habitDayStatus(habit, dateObj, uid, habitLogs) {
+function effectiveStart(habit, trackingStartDate) {
+  const habitStart = habit.created_at ? stripTime(new Date(habit.created_at)) : null;
+  const candidates = [habitStart, trackingStartDate || null].filter(Boolean);
+  if (!candidates.length) return new Date(0);
+  return candidates.reduce((a, b) => (a > b ? a : b));
+}
+
+export function habitDayStatus(habit, dateObj, uid, habitLogs, trackingStartDate) {
   if (!habit.days.includes(dateObj.getDay())) return 'none';
   const d = stripTime(dateObj);
   const t = today();
   if (d > t) return 'future';
+
   const key = dateKey(d);
   const entry = habitLogs.find(
     (e) => e.habit_id === habit.id && e.user_id === uid && e.log_date === key
@@ -13,10 +21,14 @@ export function habitDayStatus(habit, dateObj, uid, habitLogs) {
     if (habit.kind === 'quantity' && (entry.amount || 0) < habit.target) return 'partial';
     return entry.points < 0 ? 'missed' : 'done';
   }
+
+  const start = effectiveStart(habit, trackingStartDate);
+  if (d < start) return 'none'; // antes de que el hábito o el conteo existieran: no penaliza
+
   return d.getTime() === t.getTime() ? 'pending' : 'missed';
 }
 
-export function dayAggregateStatus(habits, dateObj, uid, habitLogs) {
+export function dayAggregateStatus(habits, dateObj, uid, habitLogs, trackingStartDate) {
   const scheduled = habits.filter((h) => h.days.includes(dateObj.getDay()));
   if (!scheduled.length) return 'none';
   const d = stripTime(dateObj);
@@ -25,12 +37,16 @@ export function dayAggregateStatus(habits, dateObj, uid, habitLogs) {
   let anyMissed = false;
   let anyPartial = false;
   let anyPending = false;
+  let anyRelevant = false;
   for (const h of scheduled) {
-    const s = habitDayStatus(h, dateObj, uid, habitLogs);
+    const s = habitDayStatus(h, dateObj, uid, habitLogs, trackingStartDate);
+    if (s === 'none') continue;
+    anyRelevant = true;
     if (s === 'missed') anyMissed = true;
     if (s === 'partial') anyPartial = true;
     if (s === 'pending') anyPending = true;
   }
+  if (!anyRelevant) return 'none';
   if (anyMissed) return 'missed';
   if (anyPartial) return 'partial';
   if (anyPending) return 'pending';
@@ -51,14 +67,15 @@ export function todayFor(uid, habitLogs) {
 }
 
 // Filas de "hábito no cumplido" que faltan insertar para lo que va del mes,
-// para cada hábito programado en un día ya pasado sin registro.
-export function computeMissingRows(habits, users, habitLogs) {
+// respetando tanto la fecha de creación del hábito como la fecha desde la
+// que se empezó a contar en general (trackingStartDate), para no penalizar
+// nunca días anteriores a cualquiera de las dos.
+export function computeMissingRows(habits, users, habitLogs, trackingStartDate) {
   const t = today();
   const monthStart = new Date(t.getFullYear(), t.getMonth(), 1);
   const rows = [];
   habits.forEach((habit) => {
-    // Un hábito nunca penaliza días anteriores a su propia creación.
-    const habitStart = habit.created_at ? stripTime(new Date(habit.created_at)) : monthStart;
+    const habitStart = effectiveStart(habit, trackingStartDate);
     const rangeStart = habitStart > monthStart ? habitStart : monthStart;
     users.forEach((u) => {
       let d = new Date(rangeStart);

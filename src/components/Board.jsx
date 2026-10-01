@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { CAL_DOW_LABELS } from '../lib/dates';
 import { dayAggregateStatus, pool, todayFor } from '../lib/logic';
 
@@ -39,21 +40,61 @@ function buildFeed(habitLogs, workouts, redemptions, rewards, users) {
   return items.sort((a, b) => new Date(b.ts) - new Date(a.ts)).slice(0, 8);
 }
 
-export default function Board({ users, habits, habitLogs, workouts, rewards, redemptions, currentUser }) {
+export default function Board({ users, habits, habitLogs, workouts, rewards, redemptions, currentUser, trackingStartDate, fetchMonthLogs }) {
   const total = pool(habitLogs, redemptions);
   const feed = buildFeed(habitLogs, workouts, redemptions, rewards, users);
 
-  const t = new Date();
-  const year = t.getFullYear();
-  const month = t.getMonth();
-  const first = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  const [viewYear, setViewYear] = useState(currentYear);
+  const [viewMonth, setViewMonth] = useState(currentMonth);
+  const [monthLogs, setMonthLogs] = useState(habitLogs);
+
+  const isViewingCurrentMonth = viewYear === currentYear && viewMonth === currentMonth;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isViewingCurrentMonth) {
+      setMonthLogs(habitLogs);
+      return;
+    }
+    fetchMonthLogs(viewYear, viewMonth).then((data) => {
+      if (!cancelled) setMonthLogs(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewYear, viewMonth, isViewingCurrentMonth, habitLogs]);
+
+  function prevMonth() {
+    if (viewMonth === 0) {
+      setViewYear((y) => y - 1);
+      setViewMonth(11);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  }
+  function nextMonth() {
+    if (isViewingCurrentMonth) return;
+    if (viewMonth === 11) {
+      setViewYear((y) => y + 1);
+      setViewMonth(0);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  }
+
+  const first = new Date(viewYear, viewMonth, 1);
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const offset = (first.getDay() + 6) % 7;
-  const monthLabel = t.toLocaleDateString('es-UY', { month: 'long', year: 'numeric' });
+  const monthLabel = first.toLocaleDateString('es-UY', { month: 'long', year: 'numeric' });
 
   const cells = [];
   for (let i = 0; i < offset; i++) cells.push(null);
-  for (let day = 1; day <= daysInMonth; day++) cells.push(new Date(year, month, day));
+  for (let day = 1; day <= daysInMonth; day++) cells.push(new Date(viewYear, viewMonth, day));
 
   return (
     <section className="screen active">
@@ -77,7 +118,11 @@ export default function Board({ users, habits, habitLogs, workouts, rewards, red
         })}
       </div>
 
-      <div className="section-head"><span className="cal-title">{monthLabel}</span></div>
+      <div className="section-head cal-nav-row">
+        <button className="cal-nav-btn" onClick={prevMonth} aria-label="Mes anterior">‹</button>
+        <span className="cal-title">{monthLabel}</span>
+        <button className="cal-nav-btn" onClick={nextMonth} disabled={isViewingCurrentMonth} aria-label="Mes siguiente">›</button>
+      </div>
       <div className="cal-card">
         <div className="cal-grid">
           {CAL_DOW_LABELS.map((l) => (
@@ -85,7 +130,7 @@ export default function Board({ users, habits, habitLogs, workouts, rewards, red
           ))}
           {cells.map((d, i) =>
             d ? (
-              <div key={i} className={'cal-day ' + dayAggregateStatus(habits, d, currentUser.id, habitLogs)}>
+              <div key={i} className={'cal-day ' + dayAggregateStatus(habits, d, currentUser.id, monthLogs, trackingStartDate)}>
                 {d.getDate()}
               </div>
             ) : (

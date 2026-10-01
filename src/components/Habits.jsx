@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { CAL_DOW_LABELS, DOW_LABELS, dateKey, mondayOfWeek, today } from '../lib/dates';
 import { habitDayStatus } from '../lib/logic';
 
-function WeekStrip({ habit, currentUser, habitLogs }) {
+function WeekStrip({ habit, currentUser, habitLogs, trackingStartDate }) {
   const monday = mondayOfWeek(today());
   const cells = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    cells.push({ d, s: habitDayStatus(habit, d, currentUser.id, habitLogs) });
+    cells.push({ d, s: habitDayStatus(habit, d, currentUser.id, habitLogs, trackingStartDate) });
   }
   return (
     <div className="week-strip">
@@ -87,7 +87,7 @@ function HabitAdminForm({ onAdd }) {
   );
 }
 
-export default function Habits({ habits, habitLogs, currentUser, isAdmin, actions }) {
+export default function Habits({ habits, habitLogs, currentUser, isAdmin, actions, trackingStartDate }) {
   const t = today();
 
   return (
@@ -124,12 +124,12 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
                   <div className="hmeta" style={{ marginTop: 6 }}>No corresponde hoy</div>
                 )}
               </div>
-              <WeekStrip habit={h} currentUser={currentUser} habitLogs={habitLogs} />
+              <WeekStrip habit={h} currentUser={currentUser} habitLogs={habitLogs} trackingStartDate={trackingStartDate} />
             </div>
           );
         }
 
-        const status = scheduledToday ? habitDayStatus(h, t, currentUser.id, habitLogs) : 'none';
+        const status = scheduledToday ? habitDayStatus(h, t, currentUser.id, habitLogs, trackingStartDate) : 'none';
         const done = status === 'done';
         return (
           <div className="habit-card" key={h.id}>
@@ -149,7 +149,7 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
                 <button className="rm" onClick={() => window.confirm(`¿Eliminar "${h.name}"?`) && actions.deleteHabit(h.id)}>✕</button>
               )}
             </div>
-            <WeekStrip habit={h} currentUser={currentUser} habitLogs={habitLogs} />
+            <WeekStrip habit={h} currentUser={currentUser} habitLogs={habitLogs} trackingStartDate={trackingStartDate} />
           </div>
         );
       })}

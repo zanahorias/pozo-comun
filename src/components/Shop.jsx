@@ -28,6 +28,65 @@ function RewardAdminForm({ onAdd }) {
   );
 }
 
+function RewardCard({ reward, total, isAdmin, actions, currentUser }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(reward.name);
+  const [desc, setDesc] = useState(reward.description || '');
+  const [cost, setCost] = useState(reward.cost_points);
+  const [emoji, setEmoji] = useState(reward.emoji);
+
+  function save() {
+    actions.updateReward(reward.id, {
+      name: name.trim() || reward.name,
+      description: desc.trim(),
+      cost_points: Number(cost) || reward.cost_points,
+      emoji: emoji || reward.emoji
+    });
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="reward-card">
+        <div className="field-row cols-2">
+          <input value={emoji} maxLength={2} onChange={(e) => setEmoji(e.target.value)} />
+          <input type="number" min="1" value={cost} onChange={(e) => setCost(e.target.value)} />
+        </div>
+        <div className="field-row"><input value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="field-row"><input value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save}>Guardar</button>
+          <button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancelar</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="reward-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div className="reward-emoji">{reward.emoji}</div>
+        {isAdmin && (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button className="rm" style={{ color: 'var(--court-light)' }} onClick={() => setEditing(true)}>✎</button>
+            <button className="rm" onClick={() => window.confirm(`¿Eliminar "${reward.name}"?`) && actions.deleteReward(reward.id)}>✕</button>
+          </div>
+        )}
+      </div>
+      <div className="reward-name">{reward.name}</div>
+      <div className="reward-desc">{reward.description}</div>
+      <div className="reward-cost">{reward.cost_points} pts</div>
+      <button
+        className={'btn ' + (total >= reward.cost_points ? 'btn-primary' : 'btn-ghost')}
+        disabled={total < reward.cost_points}
+        onClick={() => actions.redeem(reward, currentUser.id)}
+      >
+        {total >= reward.cost_points ? 'Canjear' : 'Puntos insuficientes'}
+      </button>
+    </div>
+  );
+}
+
 export default function Shop({ rewards, habitLogs, redemptions, currentUser, isAdmin, actions }) {
   const total = pool(habitLogs, redemptions);
   const sorted = [...rewards].sort((a, b) => a.cost_points - b.cost_points);
@@ -37,24 +96,7 @@ export default function Shop({ rewards, habitLogs, redemptions, currentUser, isA
       <h2 className="section-title">Tienda de recompensas</h2>
       <div className="reward-grid">
         {sorted.map((r) => (
-          <div className="reward-card" key={r.id}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div className="reward-emoji">{r.emoji}</div>
-              {isAdmin && (
-                <button className="rm" onClick={() => window.confirm(`¿Eliminar "${r.name}"?`) && actions.deleteReward(r.id)}>✕</button>
-              )}
-            </div>
-            <div className="reward-name">{r.name}</div>
-            <div className="reward-desc">{r.description}</div>
-            <div className="reward-cost">{r.cost_points} pts</div>
-            <button
-              className={'btn ' + (total >= r.cost_points ? 'btn-primary' : 'btn-ghost')}
-              disabled={total < r.cost_points}
-              onClick={() => actions.redeem(r, currentUser.id)}
-            >
-              {total >= r.cost_points ? 'Canjear' : 'Puntos insuficientes'}
-            </button>
-          </div>
+          <RewardCard key={r.id} reward={r} total={total} isAdmin={isAdmin} actions={actions} currentUser={currentUser} />
         ))}
       </div>
       {isAdmin && <RewardAdminForm onAdd={actions.addReward} />}

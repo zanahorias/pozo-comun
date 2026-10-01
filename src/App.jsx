@@ -11,7 +11,7 @@ import TabBar from './components/TabBar';
 const PROFILE_KEY = 'pozo-comun-profile-id';
 
 export default function App() {
-  const { users, habits, habitLogs, workouts, rewards, redemptions, loading, error, actions } = useAppData();
+  const { users, habits, habitLogs, workouts, rewards, redemptions, trackingStartDate, loading, error, actions, fetchMonthLogs } = useAppData();
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem(PROFILE_KEY));
   const [screen, setScreen] = useState('board');
 
@@ -45,10 +45,10 @@ export default function App() {
       <Header users={users} currentUser={currentUser} onSwitchUser={(u) => setCurrentUserId(u.id)} isAdmin={isAdmin} />
       <main>
         {screen === 'board' && (
-          <Board users={users} habits={habits} habitLogs={habitLogs} workouts={workouts} rewards={rewards} redemptions={redemptions} currentUser={currentUser} />
+          <Board users={users} habits={habits} habitLogs={habitLogs} workouts={workouts} rewards={rewards} redemptions={redemptions} currentUser={currentUser} trackingStartDate={trackingStartDate} fetchMonthLogs={fetchMonthLogs} />
         )}
         {screen === 'habits' && (
-          <Habits habits={habits} habitLogs={habitLogs} currentUser={currentUser} isAdmin={isAdmin} actions={actions} />
+          <Habits habits={habits} habitLogs={habitLogs} currentUser={currentUser} isAdmin={isAdmin} actions={actions} trackingStartDate={trackingStartDate} />
         )}
         {screen === 'training' && (
           <Training users={users} currentUser={currentUser} workouts={workouts} actions={actions} />
