@@ -51,7 +51,8 @@ export default function App() {
     }
     const pin = window.prompt('PIN de administrador:');
     if (pin === null) return;
-if (pin === "1234" || (adminPin && pin === adminPin))      setIsAdminMode(true);
+    if (pin === "1234" || (adminPin && pin === adminPin)) {
+      setIsAdminMode(true);
     } else {
       window.alert('PIN incorrecto.');
     }
