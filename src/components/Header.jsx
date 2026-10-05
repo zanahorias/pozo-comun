@@ -1,4 +1,4 @@
-export default function Header({ users, currentUser, onSwitchUser, isAdmin }) {
+export default function Header({ users, currentUser, onSwitchUser, isAdmin, onToggleAdmin, userTotals }) {
   return (
     <header className="top">
       <div className="brand">
@@ -14,10 +14,13 @@ export default function Header({ users, currentUser, onSwitchUser, isAdmin }) {
               onClick={() => onSwitchUser(u)}
             >
               {u.name}
+              <span className="switcher-total">{userTotals?.[u.id] ?? 0}</span>
             </button>
           ))}
         </div>
-        {isAdmin && <span className="admin-chip on"><span>Admin</span></span>}
+        <button className={'admin-chip' + (isAdmin ? ' on' : '')} onClick={onToggleAdmin}>
+          <span>{isAdmin ? 'Admin ✓' : 'Admin'}</span>
+        </button>
       </div>
     </header>
   );

@@ -1,16 +1,16 @@
 :root {
-  --ink: #14261F; --paper: #F6F3EA; --court: #1B4332; --court-light: #2A5C42;
-  --chalk: #F8F6EF; --amber: #E0972D; --amber-soft: #F4DDB2; --coral: #C6553F;
-  --coral-soft: #F2D6CF; --green-soft: #CFE3D6; --line: rgba(20,38,31,0.14);
-  --muted: #5C6B62; --card: #FFFFFF;
+  --ink: #15172B; --paper: #F5F3EF; --court: #33348E; --court-light: #4338CA;
+  --chalk: #F8F7FB; --amber: #D97F0C; --amber-soft: #F4DDB2; --coral: #B83B2C;
+  --coral-soft: #F2D6CF; --green-soft: #CDE6D6; --line: rgba(21,23,43,0.16);
+  --muted: #53566E; --card: #FFFFFF;
   box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ink: #EDEAE0; --paper: #10201A; --court: #163C2C; --court-light: #1F5039;
-    --chalk: #0E1B15; --amber: #E8A23D; --amber-soft: #3A2E17; --coral: #D9705A;
-    --coral-soft: #3A241E; --green-soft: #1E3327; --line: rgba(237,234,224,0.14);
-    --muted: #9FAEA6; --card: #16281F;
+    --ink: #EEEDF7; --paper: #11121D; --court: #5B54E8; --court-light: #B4AEFF;
+    --chalk: #0D0E18; --amber: #F0A838; --amber-soft: #3A2E17; --coral: #E07B63;
+    --coral-soft: #3A241E; --green-soft: #1E3C2E; --line: rgba(238,237,247,0.16);
+    --muted: #A7A8C2; --card: #181A2C;
   }
 }
 html { height: 100%; }
@@ -29,6 +29,9 @@ header.top { position: sticky; top: 0; z-index: 20; padding: calc(env(safe-area-
 .switcher { display: flex; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
 .switcher button { border: none; background: transparent; font: inherit; font-size: 12px; font-weight: 600; padding: 6px 11px; border-radius: 999px; color: var(--muted); cursor: pointer; }
 .switcher button.active { background: var(--court); color: var(--chalk); }
+.switcher button { display: flex; align-items: center; gap: 6px; }
+.switcher-total { font-family: 'Space Grotesk'; font-weight: 700; font-size: 11px; opacity: .8; }
+.multiplier-banner { margin-top: 12px; background: var(--amber-soft); color: var(--ink); border-radius: 12px; padding: 10px 14px; font-size: 12.5px; font-weight: 600; text-align: center; }
 .admin-chip { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--ink); background: var(--amber-soft); border: 1px solid var(--amber); border-radius: 999px; padding: 6px 10px; }
 
 main { flex: 1; padding: 18px 18px 100px; }
@@ -86,6 +89,9 @@ h2.section-title { font-size: 19px; font-weight: 700; margin: 2px 0 14px; }
 .habit-info .hname { font-weight: 600; font-size: 14.5px; }
 .habit-info .hmeta { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
 .habit-pts { font-family: 'Space Grotesk'; font-weight: 700; font-size: 13.5px; color: var(--amber); white-space: nowrap; }
+.btn-small { padding: 6px 10px; font-size: 11.5px; }
+.recover-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 8px 10px; background: var(--amber-soft); border-radius: 10px; font-size: 12px; color: var(--ink); }
+.recover-row span { flex: 1; }
 .week-strip { display: flex; gap: 5px; margin-top: 10px; padding-left: 38px; }
 .week-dot { width: 22px; height: 22px; border-radius: 6px; font-size: 9.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; color: var(--muted); border: 1px solid var(--line); }
 .week-dot.done { background: var(--green-soft); color: var(--court); border-color: transparent; }
@@ -145,6 +151,7 @@ label.flabel { font-size: 11.5px; color: var(--muted); font-weight: 600; display
 .reward-name { font-weight: 600; font-size: 14px; }
 .reward-desc { font-size: 12px; color: var(--muted); line-height: 1.35; flex: 1; }
 .reward-cost { font-family: 'Space Grotesk'; font-weight: 700; color: var(--amber); font-size: 13px; }
+.reward-badge { font-size: 11px; font-weight: 700; color: var(--court-light); }
 .reward-card .btn { width: 100%; margin-top: 2px; }
 
 nav.tabbar { position: sticky; bottom: 0; z-index: 20; background: var(--paper); border-top: 1px solid var(--line); padding: 10px 10px calc(env(safe-area-inset-bottom,0px) + 10px); display: flex; gap: 4px; }
@@ -153,6 +160,14 @@ nav.tabbar button .ico { font-size: 18px; }
 nav.tabbar button.active { color: var(--court); }
 
 .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 30px 10px; }
+
+.exercise-icon { width: 96px; height: 96px; margin: 4px auto 14px; color: var(--court); background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
+.exercise-icon svg { width: 100%; height: 100%; }
+
+.timer-box { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px 16px; text-align: center; }
+.timer-display { font-family: 'Space Grotesk'; font-size: 42px; font-weight: 700; letter-spacing: 0.02em; margin-bottom: 16px; }
+.timer-display.timer-done { color: var(--coral); }
+.timer-controls { display: flex; gap: 8px; }
 
 .gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .gate-card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 30px 26px; max-width: 320px; width: 100%; text-align: center; }

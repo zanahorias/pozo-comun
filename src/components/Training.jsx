@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { fmtShort } from '../lib/dates';
+import ExerciseIcon from './ExerciseIcon';
+import TimerTool from './TimerTool';
 
 const EXERCISES = [
   'Sentadilla', 'Press de banca', 'Peso muerto', 'Press militar', 'Remo con barra',
@@ -19,9 +21,11 @@ export default function Training({ users, currentUser, workouts, actions }) {
   const [pendingSets, setPendingSets] = useState([]);
   const [runMin, setRunMin] = useState(30);
   const [runKm, setRunKm] = useState(5);
+  const [historyFilter, setHistoryFilter] = useState('all'); // 'all' o un user id
 
-  const gymLogs = workouts.filter((w) => w.type === 'strength');
-  const runLogs = workouts.filter((w) => w.type === 'cardio');
+  const filteredWorkouts = historyFilter === 'all' ? workouts : workouts.filter((w) => w.user_id === historyFilter);
+  const gymLogs = filteredWorkouts.filter((w) => w.type === 'strength');
+  const runLogs = filteredWorkouts.filter((w) => w.type === 'cardio');
 
   function addSet() {
     const r = Number(reps);
@@ -49,7 +53,20 @@ export default function Training({ users, currentUser, workouts, actions }) {
       <div className="subtabs">
         <button className={tab === 'gym' ? 'active' : ''} onClick={() => setTab('gym')}>🏋️ Gym</button>
         <button className={tab === 'run' ? 'active' : ''} onClick={() => setTab('run')}>🏃 Running</button>
+        <button className={tab === 'timer' ? 'active' : ''} onClick={() => setTab('timer')}>⏱ Tiempo</button>
       </div>
+
+      {tab !== 'timer' && (
+        <div className="field-row">
+          <label className="flabel">Ver historial de</label>
+          <div className="day-picker">
+            <button type="button" className={historyFilter === 'all' ? 'sel' : ''} onClick={() => setHistoryFilter('all')}>Todos</button>
+            {users.map((u) => (
+              <button key={u.id} type="button" className={historyFilter === u.id ? 'sel' : ''} onClick={() => setHistoryFilter(u.id)}>{u.name}</button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {tab === 'gym' && (
         <div>
@@ -59,6 +76,9 @@ export default function Training({ users, currentUser, workouts, actions }) {
               {EXERCISES.map((ex) => <option key={ex}>{ex}</option>)}
             </select>
           </div>
+
+          {exercise !== 'Otro…' && <ExerciseIcon name={exercise} />}
+
           {exercise === 'Otro…' && (
             <div className="field-row">
               <input placeholder="Nombre del ejercicio" value={customExercise} onChange={(e) => setCustomExercise(e.target.value)} />
@@ -111,6 +131,8 @@ export default function Training({ users, currentUser, workouts, actions }) {
           )) : <div className="empty">Sin registros todavía.</div>}
         </div>
       )}
+
+      {tab === 'timer' && <TimerTool />}
     </section>
   );
 }

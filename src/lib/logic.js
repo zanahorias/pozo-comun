@@ -1,4 +1,4 @@
-import { stripTime, dateKey, today } from './dates';
+import { stripTime, dateKey, today, mondayOfWeek } from './dates';
 
 function effectiveStart(habit, trackingStartDate) {
   const habitStart = habit.created_at ? stripTime(new Date(habit.created_at)) : null;
@@ -23,53 +23,53 @@ export function habitDayStatus(habit, dateObj, uid, habitLogs, trackingStartDate
   }
 
   const start = effectiveStart(habit, trackingStartDate);
-  if (d < start) return 'none'; // antes de que el hábito o el conteo existieran: no penaliza
+  if (d < start) return 'none';
 
   return d.getTime() === t.getTime() ? 'pending' : 'missed';
 }
 
+// Regla del calendario: verde si se cumplieron TODOS los hábitos programados
+// y relevantes de ese día, amarillo si se cumplió ALGUNO (no todos), rojo si
+// no se cumplió NINGUNO. "Cumplido" cuenta tanto 'done' como 'partial' (algo
+// de progreso en un hábito por cantidad ya es mejor que nada).
 export function dayAggregateStatus(habits, dateObj, uid, habitLogs, trackingStartDate) {
   const scheduled = habits.filter((h) => h.days.includes(dateObj.getDay()));
-  if (!scheduled.length) return 'none';
+  const relevant = scheduled.filter(
+    (h) => habitDayStatus(h, dateObj, uid, habitLogs, trackingStartDate) !== 'none'
+  );
+  if (!relevant.length) return 'none';
   const d = stripTime(dateObj);
   const t = today();
   if (d > t) return 'future';
-  let anyMissed = false;
-  let anyPartial = false;
-  let anyPending = false;
-  let anyRelevant = false;
-  for (const h of scheduled) {
+
+  let doneCount = 0;
+  relevant.forEach((h) => {
     const s = habitDayStatus(h, dateObj, uid, habitLogs, trackingStartDate);
-    if (s === 'none') continue;
-    anyRelevant = true;
-    if (s === 'missed') anyMissed = true;
-    if (s === 'partial') anyPartial = true;
-    if (s === 'pending') anyPending = true;
-  }
-  if (!anyRelevant) return 'none';
-  if (anyMissed) return 'missed';
-  if (anyPartial) return 'partial';
-  if (anyPending) return 'pending';
-  return 'done';
+    if (s === 'done' || s === 'partial') doneCount++;
+  });
+  if (doneCount === 0) return 'missed';
+  if (doneCount === relevant.length) return 'done';
+  return 'partial';
 }
 
-export function pool(habitLogs, redemptions) {
+export function pool(habitLogs, redemptions, bonusLogs = []) {
   const earned = habitLogs.reduce((s, e) => s + e.points, 0);
+  const bonus = bonusLogs.reduce((s, e) => s + e.points, 0);
   const spent = redemptions.reduce((s, r) => s + r.points_spent, 0);
-  return earned - spent;
+  return earned + bonus - spent;
 }
 
-export function todayFor(uid, habitLogs) {
+export function todayFor(uid, habitLogs, bonusLogs = []) {
   const tk = dateKey(today());
-  return habitLogs
+  const h = habitLogs
     .filter((e) => e.user_id === uid && e.log_date === tk && e.points > 0)
     .reduce((s, e) => s + e.points, 0);
+  const b = bonusLogs
+    .filter((e) => e.user_id === uid && e.log_date === tk)
+    .reduce((s, e) => s + e.points, 0);
+  return h + b;
 }
 
-// Filas de "hábito no cumplido" que faltan insertar para lo que va del mes,
-// respetando tanto la fecha de creación del hábito como la fecha desde la
-// que se empezó a contar en general (trackingStartDate), para no penalizar
-// nunca días anteriores a cualquiera de las dos.
 export function computeMissingRows(habits, users, habitLogs, trackingStartDate) {
   const t = today();
   const monthStart = new Date(t.getFullYear(), t.getMonth(), 1);
@@ -100,4 +100,55 @@ export function computeMissingRows(habits, users, habitLogs, trackingStartDate) 
     });
   });
   return rows;
+}
+
+// --- Recuperar un día perdido en un día no programado ---------------------
+
+// Busca el hábito "sí/no" no cumplido más antiguo de ESTA semana (lun-hoy)
+// para poder recuperarlo usando cualquier otro día.
+export function findRecoverableMiss(habit, uid, habitLogs, trackingStartDate) {
+  if (habit.kind !== 'boolean') return null;
+  const t = today();
+  const monday = mondayOfWeek(t);
+  let d = new Date(monday);
+  while (d <= t) {
+    const status = habitDayStatus(habit, d, uid, habitLogs, trackingStartDate);
+    if (status === 'missed') {
+      const key = dateKey(d);
+      const entry = habitLogs.find(
+        (e) => e.habit_id === habit.id && e.user_id === uid && e.log_date === key
+      );
+      if (entry) return entry;
+    }
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  }
+  return null;
+}
+
+// --- Rachas y día perfecto --------------------------------------------------
+
+// "Día perfecto": todos los hábitos programados ese día (que ya existían)
+// quedaron en estado 'done' para ese usuario. Si no había ningún hábito
+// programado y relevante ese día, no cuenta como perfecto ni como roto.
+export function isPerfectDay(habits, dateObj, uid, habitLogs, trackingStartDate) {
+  const scheduled = habits.filter((h) => h.days.includes(dateObj.getDay()));
+  const relevant = scheduled.filter(
+    (h) => habitDayStatus(h, dateObj, uid, habitLogs, trackingStartDate) !== 'none'
+  );
+  if (!relevant.length) return false;
+  return relevant.every(
+    (h) => habitDayStatus(h, dateObj, uid, habitLogs, trackingStartDate) === 'done'
+  );
+}
+
+// Cantidad de días perfectos consecutivos terminando hoy (si hoy todavía no
+// es perfecto, arranca a contar desde ayer).
+export function currentStreak(habits, uid, habitLogs, trackingStartDate) {
+  let streak = 0;
+  let d = today();
+  while (isPerfectDay(habits, d, uid, habitLogs, trackingStartDate)) {
+    streak++;
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
+  }
+  return streak;
 }

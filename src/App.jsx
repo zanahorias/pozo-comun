@@ -11,9 +11,15 @@ import TabBar from './components/TabBar';
 const PROFILE_KEY = 'pozo-comun-profile-id';
 
 export default function App() {
-  const { users, habits, habitLogs, workouts, rewards, redemptions, trackingStartDate, loading, error, actions, fetchMonthLogs } = useAppData();
+  const {
+    users, habits, habitLogs, bonusLogs, workouts, rewards, redemptions,
+    trackingStartDate, adminPin, currentGoal, goalProgress,
+    currentMultiplier, multiplierInfo, userTotals,
+    loading, error, actions, fetchMonthLogs
+  } = useAppData();
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem(PROFILE_KEY));
   const [screen, setScreen] = useState('board');
+  const [isAdminMode, setIsAdminMode] = useState(false);
 
   useEffect(() => {
     if (currentUserId) localStorage.setItem(PROFILE_KEY, currentUserId);
@@ -38,23 +44,66 @@ export default function App() {
     return <ProfileGate users={users} onPick={(u) => setCurrentUserId(u.id)} />;
   }
 
-  const isAdmin = currentUser.role === 'admin';
+  function handleToggleAdmin() {
+    if (isAdminMode) {
+      setIsAdminMode(false);
+      return;
+    }
+    const pin = window.prompt('PIN de administrador:');
+    if (pin === null) return;
+    if (adminPin && pin === adminPin) {
+      setIsAdminMode(true);
+    } else {
+      window.alert('PIN incorrecto.');
+    }
+  }
 
   return (
     <div className="app">
-      <Header users={users} currentUser={currentUser} onSwitchUser={(u) => setCurrentUserId(u.id)} isAdmin={isAdmin} />
+      <Header
+        users={users}
+        currentUser={currentUser}
+        onSwitchUser={(u) => setCurrentUserId(u.id)}
+        isAdmin={isAdminMode}
+        onToggleAdmin={handleToggleAdmin}
+        userTotals={userTotals}
+      />
       <main>
         {screen === 'board' && (
-          <Board users={users} habits={habits} habitLogs={habitLogs} workouts={workouts} rewards={rewards} redemptions={redemptions} currentUser={currentUser} trackingStartDate={trackingStartDate} fetchMonthLogs={fetchMonthLogs} />
+          <Board
+            users={users}
+            habits={habits}
+            habitLogs={habitLogs}
+            bonusLogs={bonusLogs}
+            workouts={workouts}
+            rewards={rewards}
+            redemptions={redemptions}
+            currentUser={currentUser}
+            trackingStartDate={trackingStartDate}
+            fetchMonthLogs={fetchMonthLogs}
+            currentGoal={currentGoal}
+            goalProgress={goalProgress}
+            currentMultiplier={currentMultiplier}
+            multiplierInfo={multiplierInfo}
+            isAdmin={isAdminMode}
+            actions={actions}
+          />
         )}
         {screen === 'habits' && (
-          <Habits habits={habits} habitLogs={habitLogs} currentUser={currentUser} isAdmin={isAdmin} actions={actions} trackingStartDate={trackingStartDate} />
+          <Habits
+            habits={habits}
+            habitLogs={habitLogs}
+            currentUser={currentUser}
+            isAdmin={isAdminMode}
+            actions={actions}
+            trackingStartDate={trackingStartDate}
+          />
         )}
         {screen === 'training' && (
           <Training users={users} currentUser={currentUser} workouts={workouts} actions={actions} />
         )}
         {screen === 'shop' && (
-          <Shop rewards={rewards} habitLogs={habitLogs} redemptions={redemptions} currentUser={currentUser} isAdmin={isAdmin} actions={actions} />
+          <Shop rewards={rewards} habitLogs={habitLogs} bonusLogs={bonusLogs} redemptions={redemptions} currentUser={currentUser} isAdmin={isAdminMode} actions={actions} />
         )}
       </main>
       <TabBar screen={screen} onChange={setScreen} />

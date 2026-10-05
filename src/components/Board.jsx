@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import { CAL_DOW_LABELS } from '../lib/dates';
-import { dayAggregateStatus, pool, todayFor } from '../lib/logic';
+import { dayAggregateStatus, pool, todayFor, currentStreak } from '../lib/logic';
 
 function userName(users, uid) {
   return users.find((u) => u.id === uid)?.name || uid;
 }
 
-function buildFeed(habitLogs, workouts, redemptions, rewards, users) {
+const BONUS_LABELS = {
+  perfect_day: 'día perfecto',
+  streak3: 'racha de 3 días',
+  streak7: 'racha de 7 días'
+};
+
+function buildFeed(habitLogs, bonusLogs, workouts, redemptions, rewards, users) {
   const items = [];
   habitLogs.forEach((e) => {
     if (!e.created_at) return;
@@ -16,6 +22,15 @@ function buildFeed(habitLogs, workouts, redemptions, rewards, users) {
       text: e.points < 0 ? 'no cumplió un hábito' : 'sumó puntos de un hábito',
       pts: e.points,
       sign: e.points < 0 ? 'minus' : 'plus'
+    });
+  });
+  bonusLogs.forEach((b) => {
+    items.push({
+      ts: b.created_at,
+      who: b.user_id,
+      text: `logró ${BONUS_LABELS[b.kind] || 'un bono'} 🎉`,
+      pts: b.points,
+      sign: 'plus'
     });
   });
   workouts.forEach((w) => {
@@ -40,9 +55,62 @@ function buildFeed(habitLogs, workouts, redemptions, rewards, users) {
   return items.sort((a, b) => new Date(b.ts) - new Date(a.ts)).slice(0, 8);
 }
 
-export default function Board({ users, habits, habitLogs, workouts, rewards, redemptions, currentUser, trackingStartDate, fetchMonthLogs }) {
-  const total = pool(habitLogs, redemptions);
-  const feed = buildFeed(habitLogs, workouts, redemptions, rewards, users);
+function GoalCard({ currentGoal, goalProgress, isAdmin, actions }) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(currentGoal?.title || '');
+  const [targetPoints, setTargetPoints] = useState(currentGoal?.target_points || 500);
+  const [rewardText, setRewardText] = useState(currentGoal?.reward_text || '');
+
+  function save() {
+    if (!title.trim() || !targetPoints) return;
+    actions.setGoal(title.trim(), Number(targetPoints), rewardText.trim());
+    setEditing(false);
+  }
+
+  if (!currentGoal && !isAdmin) return null;
+
+  if (!currentGoal || editing) {
+    if (!isAdmin) return null;
+    return (
+      <div className="admin-panel">
+        <label className="flabel">Objetivo en común</label>
+        <div className="field-row"><input placeholder="Título, ej: Viaje de fin de año" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+        <div className="field-row cols-2">
+          <input type="number" min="1" placeholder="Puntos meta" value={targetPoints} onChange={(e) => setTargetPoints(e.target.value)} />
+          <input placeholder="Recompensa al llegar" value={rewardText} onChange={(e) => setRewardText(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save}>Guardar objetivo</button>
+          {currentGoal && <button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancelar</button>}
+        </div>
+      </div>
+    );
+  }
+
+  const pct = Math.min(100, Math.round((goalProgress / currentGoal.target_points) * 100));
+  return (
+    <div className="cal-card" style={{ marginTop: 14 }}>
+      <div className="cal-title">Objetivo en común</div>
+      <div style={{ fontWeight: 700, fontSize: 15, marginTop: 4 }}>{currentGoal.title}</div>
+      {currentGoal.reward_text && <div className="hmeta" style={{ marginTop: 2 }}>Recompensa: {currentGoal.reward_text}</div>}
+      <div className="qty-bar-row" style={{ marginTop: 10 }}>
+        <span><b>{goalProgress}</b> / {currentGoal.target_points} pts</span>
+        <span>{pct}%</span>
+      </div>
+      <div className="bar-track"><div className="bar-fill" style={{ width: pct + '%' }} /></div>
+      {isAdmin && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          <button className="btn btn-ghost btn-small" onClick={() => setEditing(true)}>Editar</button>
+          <button className="btn btn-ghost btn-small" onClick={() => window.confirm('¿Borrar este objetivo?') && actions.clearGoal()}>Borrar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Board({ users, habits, habitLogs, bonusLogs, workouts, rewards, redemptions, currentUser, trackingStartDate, fetchMonthLogs, currentGoal, goalProgress, currentMultiplier, multiplierInfo, isAdmin, actions }) {
+  const total = pool(habitLogs, redemptions, bonusLogs);
+  const feed = buildFeed(habitLogs, bonusLogs, workouts, redemptions, rewards, users);
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -104,19 +172,32 @@ export default function Board({ users, habits, habitLogs, workouts, rewards, red
         <div className="pool-sub">Suma lo cumplido, resta lo que quedó pendiente</div>
       </div>
 
+      {currentMultiplier > 1 && (
+        <div className="multiplier-banner">
+          ✨ Multiplicador x{currentMultiplier} activo{multiplierInfo?.source ? ` — ${multiplierInfo.source}` : ''}
+          {multiplierInfo?.expiresAt && (
+            <span> · hasta las {new Date(multiplierInfo.expiresAt).toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit' })}</span>
+          )}
+        </div>
+      )}
+
       <div className="today-row">
         {users.map((u) => {
-          const val = todayFor(u.id, habitLogs);
+          const val = todayFor(u.id, habitLogs, bonusLogs);
+          const streak = currentStreak(habits, u.id, habitLogs, trackingStartDate);
           const pct = Math.min(100, Math.round((val / 15) * 100));
           return (
             <div className="today-card" key={u.id}>
               <div className="name">{u.name} · hoy</div>
               <div className="amount">{val} pts</div>
               <div className="bar-track"><div className="bar-fill" style={{ width: pct + '%' }} /></div>
+              {streak > 0 && <div className="hmeta" style={{ marginTop: 6 }}>🔥 Racha: {streak} {streak === 1 ? 'día' : 'días'}</div>}
             </div>
           );
         })}
       </div>
+
+      <GoalCard currentGoal={currentGoal} goalProgress={goalProgress} isAdmin={isAdmin} actions={actions} />
 
       <div className="section-head cal-nav-row">
         <button className="cal-nav-btn" onClick={prevMonth} aria-label="Mes anterior">‹</button>
@@ -139,11 +220,10 @@ export default function Board({ users, habits, habitLogs, workouts, rewards, red
           )}
         </div>
         <div className="cal-legend">
-          <span><i style={{ background: 'var(--green-soft)' }} />Cumplido</span>
-          <span><i style={{ background: 'var(--amber-soft)' }} />Parcial</span>
-          <span><i style={{ background: 'var(--coral-soft)' }} />No cumplido</span>
-          <span><i style={{ border: '2px solid var(--amber)' }} />Hoy pendiente</span>
-          <span><i style={{ border: '1px dashed var(--line)' }} />Sin hábito</span>
+          <span><i style={{ background: 'var(--green-soft)' }} />Todos los hábitos</span>
+          <span><i style={{ background: 'var(--amber-soft)' }} />Algunos</span>
+          <span><i style={{ background: 'var(--coral-soft)' }} />Ninguno</span>
+          <span><i style={{ border: '1px dashed var(--line)' }} />Sin hábito ese día</span>
         </div>
       </div>
 
