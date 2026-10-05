@@ -20,7 +20,7 @@ export function useAppData() {
   const [rewards, setRewards] = useState([]);
   const [redemptions, setRedemptions] = useState([]);
   const [trackingStartDate, setTrackingStartDate] = useState(null);
-  const [adminPin, setAdminPin] = useState(null);
+  const [adminPin, setAdminPin] = useState(1234);
   const [currentGoal, setCurrentGoal] = useState(null);
   const [goalProgress, setGoalProgress] = useState(0);
   const [currentMultiplier, setCurrentMultiplier] = useState(1);
