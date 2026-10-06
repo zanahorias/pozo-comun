@@ -38,7 +38,7 @@ function buildFeed(habitLogs, bonusLogs, workouts, redemptions, rewards, users) 
     items.push({
       ts: w.created_at,
       who: w.user_id,
-      text: w.type === 'strength' ? `registró ${w.exercise_name}` : `registró una carrera de ${w.distance_km} km`,
+      text: w.type === 'strength' ? `registró ${w.exercise_name}` : `registró ${(w.exercise_name || 'cardio').toLowerCase()}${Number(w.distance_km) ? ` de ${w.distance_km} km` : ` de ${w.duration_min} min`}`,
       pts: null,
       sign: 'plus'
     });

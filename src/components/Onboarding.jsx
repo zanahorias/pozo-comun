@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DOW_LABELS } from '../lib/dates';
+import { habitLabel } from '../lib/logic';
 import { getCommitment, saveCommitment, trainDaysOf } from '../lib/commitments';
 import '../theme-q4.css';
 
@@ -58,7 +59,7 @@ export default function Onboarding({ user, habits, onDone, onCancel }) {
 
       {others.map((h) => (
         <div className="log-card" key={h.id}>
-          <div className="lname">{h.emoji ? h.emoji + ' ' : ''}{h.name}</div>
+          <div className="lname">{h.emoji ? h.emoji + ' ' : ''}{habitLabel(h)}</div>
           <div className="hmeta" style={{ marginBottom: 8 }}>{days[h.id].length} días por semana</div>
           <DayPicker value={days[h.id]} onChange={(v) => setDays((s) => ({ ...s, [h.id]: v }))} />
         </div>

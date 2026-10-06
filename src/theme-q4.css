@@ -113,3 +113,20 @@
 
 /* ===== Onboarding ===== */
 .onboard { max-width: 520px; margin: 0 auto; padding: 24px 16px 40px; }
+
+/* ===== Puntos flotantes ===== */
+.points-fx { position: fixed; left: 0; right: 0; top: 26%; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.points-pop { font-family: 'Space Grotesk'; font-size: 44px; font-weight: 800; line-height: 1; text-shadow: 0 2px 14px rgba(0,0,0,.55); animation: float-up 1.8s ease-out forwards; display: flex; flex-direction: column; align-items: center; }
+.points-pop small { font-size: 12px; font-weight: 700; opacity: .9; margin-top: 4px; max-width: 70vw; text-align: center; }
+.points-pop.plus { color: #3DFFB5; }
+.points-pop.minus { color: #FF5A6A; }
+@keyframes float-up { 0% { opacity: 0; transform: translateY(24px) scale(.6); } 15% { opacity: 1; transform: translateY(0) scale(1.25); } 30% { transform: translateY(-6px) scale(1); } 100% { opacity: 0; transform: translateY(-90px) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .points-pop { animation: fade-only 1.8s ease-out forwards; } @keyframes fade-only { 0%,70% { opacity: 1; } 100% { opacity: 0; } } }
+
+/* ===== Cardio ===== */
+.act-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+.act-chip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-weight: 700; font-size: 12px; }
+.act-chip .act-ico { font-size: 24px; }
+.act-chip.sel { border-color: var(--court); background: color-mix(in srgb, var(--court) 14%, var(--card)); color: var(--court); }
+.wallet-value small { font-size: 12px; font-weight: 600; color: var(--muted); }
+.rest-card { text-align: center; padding: 22px 16px; }

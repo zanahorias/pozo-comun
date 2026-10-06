@@ -123,6 +123,62 @@ const ICONS = {
       <circle cx="78" cy="32" r="4" {...common} />
     </svg>
   ),
+  'Farmer Walk': (
+    <svg viewBox="0 0 100 100">
+      <Head cx={50} cy={18} />
+      <path d="M50 25 V58" {...common} />
+      <path d="M50 58 L40 86" {...common} />
+      <path d="M50 58 L62 84" {...common} />
+      <path d="M50 34 L32 56" {...common} />
+      <path d="M50 34 L68 56" {...common} />
+      <rect x="24" y="56" width="14" height="12" rx="3" {...common} />
+      <rect x="62" y="56" width="14" height="12" rx="3" {...common} />
+    </svg>
+  ),
+  'Caminata talones': (
+    <svg viewBox="0 0 100 100">
+      <Head cx={46} cy={16} />
+      <path d="M46 23 V56" {...common} />
+      <path d="M46 56 L36 80" {...common} />
+      <path d="M46 56 L60 80" {...common} />
+      <path d="M36 80 L28 72" {...common} />
+      <path d="M60 80 L68 72" {...common} />
+      <path d="M46 34 L32 50" {...common} />
+      <path d="M46 34 L62 50" {...common} />
+      <path d="M14 88 H86" {...common} />
+    </svg>
+  ),
+  'Dorsiflexión': (
+    <svg viewBox="0 0 100 100">
+      <path d="M84 8 V90" {...common} />
+      <Head cx={34} cy={20} />
+      <path d="M34 27 V58" {...common} />
+      <path d="M34 58 L30 88" {...common} />
+      <path d="M34 58 L58 66 L58 88" {...common} />
+      <path d="M58 88 L72 88" {...common} />
+      <path d="M34 36 L60 40" {...common} />
+    </svg>
+  ),
+  'Equilibrio': (
+    <svg viewBox="0 0 100 100">
+      <Head cx={50} cy={16} />
+      <path d="M50 23 V56" {...common} />
+      <path d="M50 56 V88" {...common} />
+      <path d="M50 56 L68 66 L62 78" {...common} />
+      <path d="M50 34 L24 44" {...common} />
+      <path d="M50 34 L76 44" {...common} />
+      <path d="M36 90 H64" {...common} />
+    </svg>
+  ),
+  'Alfabeto pie': (
+    <svg viewBox="0 0 100 100">
+      <Head cx={26} cy={22} />
+      <path d="M26 29 V56 L52 56" {...common} />
+      <path d="M52 56 L74 46" {...common} />
+      <path d="M26 56 V84" {...common} />
+      <text x="62" y="30" fontSize="16" fontWeight="800" fill="currentColor" stroke="none">A B C</text>
+    </svg>
+  ),
   'default': (
     <svg viewBox="0 0 100 100">
       <rect x="30" y="46" width="40" height="8" rx="3" {...common} />

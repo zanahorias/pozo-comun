@@ -34,7 +34,7 @@ export function useAppData() {
     try {
       const monthStart = MONTH_START_KEY();
       const nowIso = new Date().toISOString();
-      const [u, h, hl, bl, w, r, red, settings, goalRes, multRes, hlAll, blAll] = await Promise.all([
+      const [u, h, hl, bl, w, r, red, settings, goalRes, multRes, hlAll, blAll, tpMonth, tpAll] = await Promise.all([
         supabase.from('users').select('*').order('created_at'),
         supabase.from('habits').select('*').eq('active', true).order('created_at'),
         supabase.from('habit_logs').select('*').gte('log_date', monthStart),
@@ -46,7 +46,10 @@ export function useAppData() {
         supabase.from('goals').select('*').eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('active_multipliers').select('*').gt('expires_at', nowIso).order('expires_at', { ascending: false }),
         supabase.from('habit_logs').select('user_id, points'),
-        supabase.from('bonus_logs').select('user_id, points')
+        supabase.from('bonus_logs').select('user_id, points'),
+        // Puntos por entrenar (ejercicios / rutina completa). Si la tabla no existe, se ignora.
+        supabase.from('training_points').select('*').gte('log_date', monthStart),
+        supabase.from('training_points').select('user_id, points')
       ]);
       if (u.error) throw u.error;
       if (h.error) throw h.error;
@@ -63,13 +66,15 @@ export function useAppData() {
 
       let progress = 0;
       if (goal) {
-        const [hl2, bl2] = await Promise.all([
+        const [hl2, bl2, tp2] = await Promise.all([
           supabase.from('habit_logs').select('points').gte('log_date', goal.start_date).gt('points', 0),
-          supabase.from('bonus_logs').select('points').gte('log_date', goal.start_date)
+          supabase.from('bonus_logs').select('points').gte('log_date', goal.start_date),
+          supabase.from('training_points').select('points').gte('log_date', goal.start_date)
         ]);
         progress =
           (hl2.data || []).reduce((s, e) => s + e.points, 0) +
-          (bl2.data || []).reduce((s, e) => s + e.points, 0);
+          (bl2.data || []).reduce((s, e) => s + e.points, 0) +
+          (tp2.data || []).reduce((s, e) => s + e.points, 0);
       }
 
       const activeMults = multRes?.data || [];
@@ -90,11 +95,15 @@ export function useAppData() {
       (blAll?.data || []).forEach((e) => {
         totals[e.user_id] = (totals[e.user_id] || 0) + e.points;
       });
+      (tpAll?.data || []).forEach((e) => {
+        totals[e.user_id] = (totals[e.user_id] || 0) + e.points;
+      });
 
       setUsers(u.data || []);
       setHabits(h.data || []);
       setHabitLogs(hl.data || []);
-      setBonusLogs(bl.data || []);
+      // Los puntos de entrenamiento se muestran junto a los bonos (misma forma).
+      setBonusLogs([...(bl.data || []), ...(tpMonth?.data || [])]);
       setWorkouts(w.data || []);
       setRewards(r.data || []);
       setRedemptions(red.data || []);
@@ -136,6 +145,7 @@ export function useAppData() {
       .channel('pozo-comun-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'habit_logs' }, fetchAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bonus_logs' }, fetchAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'training_points' }, fetchAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'workouts' }, fetchAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'redemptions' }, fetchAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'habits' }, fetchAll)
@@ -269,9 +279,10 @@ export function useAppData() {
     await afterHabitAction(userId, habit);
   }
 
-  async function logRun(userId, durationMin, distanceKm) {
+  // activity: 'Trote' | 'Caminata' | 'Bici' | 'Otro' (se guarda en exercise_name)
+  async function logRun(userId, durationMin, distanceKm, activity = 'Trote') {
     await supabase.from('workouts').insert([
-      { user_id: userId, type: 'cardio', duration_min: durationMin, distance_km: distanceKm }
+      { user_id: userId, type: 'cardio', exercise_name: activity, duration_min: durationMin, distance_km: distanceKm }
     ]);
     await autoCompleteHabitByType('run', userId);
     const habit = habits.find((h) => h.type === 'run');

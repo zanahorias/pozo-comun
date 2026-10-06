@@ -4,25 +4,27 @@ import {
   SCOPE, Q4_CATALOG, parseReward, encodeScope,
   individualBalance, poolBalance
 } from '../lib/logic';
+import { showPoints } from '../lib/pointsFx';
 import '../theme-q4.css';
 
 // Historial completo (no solo el mes en curso) para que los saldos sean reales.
 function useEconomy(deps) {
   const [data, setData] = useState(null);
   const refresh = useCallback(async () => {
-    const [u, h, hl, bl, rd, rw] = await Promise.all([
+    const [u, h, hl, bl, rd, rw, tp] = await Promise.all([
       supabase.from('users').select('id,name').order('created_at'),
       supabase.from('habits').select('id,shared,points'),
       supabase.from('habit_logs').select('habit_id,user_id,log_date,points'),
       supabase.from('bonus_logs').select('user_id,points'),
       supabase.from('redemptions').select('reward_id,redeemed_by,points_spent'),
-      supabase.from('rewards').select('*')
+      supabase.from('rewards').select('*'),
+      supabase.from('training_points').select('user_id,points')
     ]);
     const err = [u, h, hl, bl, rd, rw].find((r) => r.error);
     if (err) { console.error(err.error); return null; }
     const next = {
       users: u.data || [], habits: h.data || [], habitLogs: hl.data || [],
-      bonusLogs: bl.data || [], redemptions: rd.data || [], rewards: rw.data || []
+      bonusLogs: [...(bl.data || []), ...(tp.data || [])], redemptions: rd.data || [], rewards: rw.data || []
     };
     setData(next);
     return next;
@@ -211,6 +213,7 @@ export default function Shop({ rewards, habitLogs, bonusLogs, redemptions, curre
       await actions.redeem(reward, currentUser.id);
       await refresh();
       setMsg(`Canjeado: ${reward.name} ✓`);
+      showPoints(-reward.cost_points, reward.name);
     } finally {
       setBusy(false);
     }

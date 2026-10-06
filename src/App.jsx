@@ -8,6 +8,7 @@ import Training from './components/Training';
 import Shop from './components/Shop';
 import TabBar from './components/TabBar';
 import Onboarding from './components/Onboarding';
+import PointsFx from './components/PointsFx';
 import { useCommitments, hasCommitment } from './lib/commitments';
 
 const PROFILE_KEY = 'pozo-comun-profile-id';
@@ -125,12 +126,13 @@ export default function App() {
           />
         )}
         {screen === 'training' && (
-          <Training users={users} currentUser={currentUser} workouts={workouts} actions={actions} />
+          <Training users={users} currentUser={currentUser} workouts={workouts} actions={actions} isAdmin={isAdminMode} />
         )}
         {screen === 'shop' && (
           <Shop rewards={rewards} habitLogs={habitLogs} bonusLogs={bonusLogs} redemptions={redemptions} currentUser={currentUser} isAdmin={isAdminMode} actions={actions} />
         )}
       </main>
+      <PointsFx userId={currentUser.id} total={userTotals?.[currentUser.id]} />
       <TabBar screen={screen} onChange={setScreen} />
     </div>
   );

@@ -20,29 +20,28 @@ const ANKLE_BLOCK = [
 
 const ROUTINES = {
   cristi: {
-    note: 'Mancuernas + peso corporal · sin banco · cero impacto en rodillas · cerrá con 15-20 min de cardio suave.',
-    cardio: true,
+    note: 'Mancuernas + peso corporal · sin banco · cero impacto en rodillas · el cardio va en la pestaña Cardio.',
     pre: [],
     freq: {
       2: [
-        { title: 'Full Body 1', ex: [x('Puente de glúteo en suelo', '3x15-20', 'glute bridge'), x('Press de hombros de pie', '3x12-15', 'dumbbell shoulder press'), x('Peso muerto rumano con mancuernas', '3x12-15', 'romanian deadlift dumbbell'), x('Remo inclinada con mancuernas', '3x12-15', 'bent over dumbbell row'), x('Plancha de antebrazos', '3x30-45s', 'plank')] },
+        { title: 'Full Body 1', ex: [x('Puente de glúteo en suelo', '3x15-20', 'glute bridge'), x('Press de hombros de pie', '3x12-15', 'dumbbell shoulder press'), x('Peso muerto rumano con mancuernas', '3x12-15', 'romanian deadlift|stiff legged dumbbell deadlift'), x('Remo inclinada con mancuernas', '3x12-15', 'bent over dumbbell row'), x('Plancha de antebrazos', '3x30-45s', 'plank')] },
         { title: 'Full Body 2', ex: [x('Puente de glúteo con mancuerna', '3x12-15', 'barbell glute bridge'), x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Good Mornings / PM sumo', '3x12-15', 'good morning'), x('Vuelos laterales', '3x15', 'side lateral raise'), x('Deadbug', '3x12/lado', 'dead bug')] }
       ],
       3: [
-        { title: 'Full Body A', ex: [x('Puente de glúteo con mancuerna', '4x12-15', 'barbell glute bridge'), x('Remo 1 mano inclinada', '3x12/lado', 'one arm dumbbell row'), x('Peso muerto rumano', '3x15', 'romanian deadlift dumbbell'), x('Elevaciones laterales', '3x15-20', 'side lateral raise')] },
-        { title: 'Full Body B', ex: [x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Patada de glúteo en cuadrupedia', '3x15-20', 'kickback'), x('Abducción de cadera acostada', '3x15-20', 'side leg raise'), x('Press militar de pie', '3x12-15', 'dumbbell shoulder press'), x('Pájaros inclinada', '3x15', 'reverse flyes')] },
+        { title: 'Full Body A', ex: [x('Puente de glúteo con mancuerna', '4x12-15', 'barbell glute bridge'), x('Remo 1 mano inclinada', '3x12/lado', 'one arm dumbbell row'), x('Peso muerto rumano', '3x15', 'romanian deadlift|stiff legged dumbbell deadlift'), x('Elevaciones laterales', '3x15-20', 'side lateral raise')] },
+        { title: 'Full Body B', ex: [x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Patada de glúteo en cuadrupedia', '3x15-20', 'glute kickback|donkey kick'), x('Abducción de cadera acostada', '3x15-20', 'side leg raise|hip abduction|abductor'), x('Press militar de pie', '3x12-15', 'dumbbell shoulder press'), x('Pájaros inclinada', '3x15', 'reverse flyes')] },
         { title: 'Full Body C', ex: [x('Puente de glúteo 1 pierna', '3x12/lado', 'single leg glute bridge'), x('Remo abierto con mancuernas', '3x12-15', 'bent over dumbbell row'), x('PM sumo ligero', '3x15', 'good morning'), x('Curl de bíceps + Extensión de tríceps', '3x15', 'dumbbell bicep curl'), x('Plancha lateral', '3x30s/lado', 'side bridge')] }
       ],
       4: [
         { title: 'Torso A', ex: [x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Remo inclinada con mancuernas', '3x12-15', 'bent over dumbbell row'), x('Press de hombros de pie', '3x12-15', 'dumbbell shoulder press'), x('Curl de bíceps + Extensión de tríceps', '3x15', 'dumbbell bicep curl'), x('Plancha de antebrazos', '3x30-45s', 'plank')] },
-        { title: 'Pierna A (bajo impacto)', ex: [x('Puente de glúteo con mancuerna', '4x12-15', 'barbell glute bridge'), x('Peso muerto rumano con mancuernas', '3x12-15', 'romanian deadlift dumbbell'), x('Puente de glúteo 1 pierna', '3x12/lado', 'single leg glute bridge'), x('Abducción de cadera acostada', '3x15-20', 'side leg raise'), x('Gemelos de pie con mancuernas', '3x15-20', 'standing dumbbell calf raise')] },
+        { title: 'Pierna A (bajo impacto)', ex: [x('Puente de glúteo con mancuerna', '4x12-15', 'barbell glute bridge'), x('Peso muerto rumano con mancuernas', '3x12-15', 'romanian deadlift|stiff legged dumbbell deadlift'), x('Puente de glúteo 1 pierna', '3x12/lado', 'single leg glute bridge'), x('Abducción de cadera acostada', '3x15-20', 'side leg raise|hip abduction|abductor'), x('Gemelos de pie con mancuernas', '3x15-20', 'standing dumbbell calf raise')] },
         { title: 'Torso B', ex: [x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Remo 1 mano inclinada', '3x12/lado', 'one arm dumbbell row'), x('Elevaciones laterales', '3x15-20', 'side lateral raise'), x('Pájaros inclinada', '3x15', 'reverse flyes'), x('Deadbug', '3x12/lado', 'dead bug')] },
-        { title: 'Pierna B (bajo impacto)', ex: [x('Puente de glúteo en suelo', '3x15-20', 'glute bridge'), x('Good Mornings / PM sumo', '3x12-15', 'good morning'), x('Patada de glúteo en cuadrupedia', '3x15-20', 'kickback'), x('Puente de glúteo con mancuerna', '3x12-15', 'barbell glute bridge'), x('Plancha lateral', '3x30s/lado', 'side bridge')] }
+        { title: 'Pierna B (bajo impacto)', ex: [x('Puente de glúteo en suelo', '3x15-20', 'glute bridge'), x('Good Mornings / PM sumo', '3x12-15', 'good morning'), x('Patada de glúteo en cuadrupedia', '3x15-20', 'glute kickback|donkey kick'), x('Puente de glúteo con mancuerna', '3x12-15', 'barbell glute bridge'), x('Plancha lateral', '3x30s/lado', 'side bridge')] }
       ],
       5: [
-        { title: 'Glúteo + Core', ex: [x('Puente de glúteo con mancuerna', '3x12-15', 'barbell glute bridge'), x('Puente de glúteo 1 pierna', '2x12/lado', 'single leg glute bridge'), x('Patada de glúteo en cuadrupedia', '2x15-20', 'kickback'), x('Deadbug', '2x12/lado', 'dead bug')] },
+        { title: 'Glúteo + Core', ex: [x('Puente de glúteo con mancuerna', '3x12-15', 'barbell glute bridge'), x('Puente de glúteo 1 pierna', '2x12/lado', 'single leg glute bridge'), x('Patada de glúteo en cuadrupedia', '2x15-20', 'glute kickback|donkey kick'), x('Deadbug', '2x12/lado', 'dead bug')] },
         { title: 'Empuje', ex: [x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Press de hombros de pie', '3x12-15', 'dumbbell shoulder press'), x('Elevaciones laterales', '2x15-20', 'side lateral raise'), x('Extensión de tríceps', '2x15', 'dumbbell triceps extension')] },
-        { title: 'Posterior', ex: [x('Peso muerto rumano con mancuernas', '3x12-15', 'romanian deadlift dumbbell'), x('Good Mornings / PM sumo', '2x12-15', 'good morning'), x('Abducción de cadera acostada', '2x15-20', 'side leg raise'), x('Plancha lateral', '2x30s/lado', 'side bridge')] },
+        { title: 'Posterior', ex: [x('Peso muerto rumano con mancuernas', '3x12-15', 'romanian deadlift|stiff legged dumbbell deadlift'), x('Good Mornings / PM sumo', '2x12-15', 'good morning'), x('Abducción de cadera acostada', '2x15-20', 'side leg raise|hip abduction|abductor'), x('Plancha lateral', '2x30s/lado', 'side bridge')] },
         { title: 'Tracción', ex: [x('Remo inclinada con mancuernas', '3x12-15', 'bent over dumbbell row'), x('Remo 1 mano inclinada', '2x12/lado', 'one arm dumbbell row'), x('Pájaros inclinada', '2x15', 'reverse flyes'), x('Curl de bíceps', '2x15', 'dumbbell bicep curl')] },
         { title: 'Full Body suave', ex: [x('Puente de glúteo en suelo', '2x15-20', 'glute bridge'), x('Press de pecho en suelo', '2x12-15', 'dumbbell floor press'), x('Remo abierto con mancuernas', '2x12-15', 'bent over dumbbell row'), x('Plancha de antebrazos', '2x30s', 'plank')] }
       ]
@@ -50,7 +49,6 @@ const ROUTINES = {
   },
   nico: {
     note: 'Barra, mancuernas y bancos · hipertrofia 12-20 reps · bloque de tobillo antes de cada rutina (fútbol).',
-    cardio: false,
     pre: ANKLE_BLOCK,
     freq: {
       2: [
@@ -350,9 +348,123 @@ function Progress({ history }) {
 }
 
 // ---------------------------------------------------------------------------
+// Cardio (trote, caminata, bici...)
+// ---------------------------------------------------------------------------
+const ACTIVITIES = [
+  { id: 'Trote', icon: '🏃', pace: true },
+  { id: 'Caminata', icon: '🚶', pace: true },
+  { id: 'Bici', icon: '🚴', pace: false },
+  { id: 'Otro', icon: '⚡', pace: false }
+];
+const actOf = (w) => ACTIVITIES.find((a) => a.id === w.exercise_name) || ACTIVITIES[0];
+const mondayOf = (d) => { const m = new Date(d); m.setHours(0, 0, 0, 0); m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); return m; };
+
+function paceText(act, min, km) {
+  if (!min || !km) return '';
+  return act.pace ? `${(min / km).toFixed(1)} min/km` : `${(km / (min / 60)).toFixed(1)} km/h`;
+}
+
+function Cardio({ users, uid, actions, workouts, onSaved }) {
+  const [act, setAct] = useState('Trote');
+  const [min, setMin] = useState(30);
+  const [km, setKm] = useState('');
+  const [filter, setFilter] = useState(uid);
+  const [logs, setLogs] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('workouts').select('*').eq('type', 'cardio').order('created_at', { ascending: false }).limit(300);
+    setLogs(data || []);
+  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load, workouts]);
+
+  const current = ACTIVITIES.find((a) => a.id === act);
+  const shown = filter === 'all' ? logs : logs.filter((w) => w.user_id === filter);
+
+  const thisMon = mondayOf(new Date());
+  const weeks = Array.from({ length: 8 }, (_, i) => { const d = new Date(thisMon); d.setDate(d.getDate() - 7 * (7 - i)); return d; });
+  const kmWeek = weeks.map(() => 0);
+  let wkMin = 0, wkKm = 0, wkN = 0;
+  shown.forEach((w) => {
+    const m = mondayOf(new Date(w.created_at)).getTime();
+    const i = weeks.findIndex((d) => d.getTime() === m);
+    if (i < 0) return;
+    kmWeek[i] += Number(w.distance_km) || 0;
+    if (i === 7) { wkMin += Number(w.duration_min) || 0; wkKm += Number(w.distance_km) || 0; wkN += 1; }
+  });
+
+  async function save() {
+    const m = Number(min) || 0;
+    const k = Number(km) || 0;
+    if (m <= 0 || saving) return;
+    setSaving(true);
+    await actions.logRun(uid, m, k, act);
+    await load();
+    setSaving(false);
+    onSaved(`${current.icon} ${act} registrado · ${m} min${k ? ` · ${k} km` : ''}`);
+    setKm('');
+  }
+
+  return (
+    <div>
+      <div className="act-grid">
+        {ACTIVITIES.map((a) => (
+          <button key={a.id} type="button" className={'act-chip' + (act === a.id ? ' sel' : '')} onClick={() => setAct(a.id)}>
+            <span className="act-ico">{a.icon}</span>{a.id}
+          </button>
+        ))}
+      </div>
+      <div className="field-row cols-2">
+        <div><label className="flabel">Tiempo (min)</label><input type="number" min="1" inputMode="numeric" value={min} onChange={(e) => setMin(e.target.value)} /></div>
+        <div><label className="flabel">Kilómetros</label><input type="number" min="0" step="0.1" inputMode="decimal" placeholder="0" value={km} onChange={(e) => setKm(e.target.value)} /></div>
+      </div>
+      {paceText(current, Number(min), Number(km)) && <div className="hmeta" style={{ marginBottom: 8 }}>Ritmo estimado: {paceText(current, Number(min), Number(km))}</div>}
+      <button className="btn btn-primary" style={{ width: '100%', marginBottom: 18 }} disabled={saving || !(Number(min) > 0)} onClick={save}>
+        {saving ? 'Guardando…' : `Registrar ${act.toLowerCase()}`}
+      </button>
+
+      <div className="field-row">
+        <label className="flabel">Ver de</label>
+        <div className="day-picker">
+          {users.map((u) => (
+            <button key={u.id} type="button" className={filter === u.id ? 'sel' : ''} onClick={() => setFilter(u.id)}>{u.name}</button>
+          ))}
+          <button type="button" className={filter === 'all' ? 'sel' : ''} onClick={() => setFilter('all')}>Todos</button>
+        </div>
+      </div>
+
+      <div className="wallets" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+        <div className="wallet"><div className="wallet-label">Esta semana</div><div className="wallet-value">{Math.round(wkKm * 10) / 10}<small> km</small></div></div>
+        <div className="wallet"><div className="wallet-label">Tiempo</div><div className="wallet-value">{wkMin}<small> min</small></div></div>
+        <div className="wallet"><div className="wallet-label">Sesiones</div><div className="wallet-value">{wkN}</div></div>
+      </div>
+
+      <div className="log-card">
+        <div className="lname">Kilómetros por semana</div>
+        <Chart data={kmWeek.map((v) => (v > 0 ? Math.round(v * 10) / 10 : null))} labels={weeks.map((d) => `${d.getDate()}/${d.getMonth() + 1}`)} color="var(--court)" kind="bar" unit="km" />
+      </div>
+
+      {shown.length ? shown.slice(0, 40).map((r) => {
+        const a = actOf(r);
+        return (
+          <div className="log-card" key={r.id}>
+            <div className="lhead">
+              <span className="lname">{a.icon} {a.id}{Number(r.distance_km) ? ` · ${r.distance_km} km` : ''}</span>
+              <span className="ldate">{fmtShort(new Date(r.created_at))} · {userName(users, r.user_id)}</span>
+            </div>
+            <div className="ldetail">{r.duration_min} min{paceText(a, Number(r.duration_min), Number(r.distance_km)) ? ' · ' + paceText(a, Number(r.duration_min), Number(r.distance_km)) : ''}</div>
+          </div>
+        );
+      }) : <div className="empty">Sin registros todavía.</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Pantalla
 // ---------------------------------------------------------------------------
-export default function Training({ users, currentUser, workouts, actions }) {
+export default function Training({ users, currentUser, workouts, actions, isAdmin }) {
   const uid = currentUser.id;
   const [tab, setTab] = useState('routine');
   const autoProfile = profileOf(currentUser);
@@ -364,11 +476,6 @@ export default function Training({ users, currentUser, workouts, actions }) {
   const [dayIdx, setDayIdx] = useState(0);
   const [editing, setEditing] = useState(false);
   const [toast, setToast] = useState('');
-  const [cardioMin, setCardioMin] = useState(15);
-  const [cardioDone, setCardioDone] = useState(false);
-  const [runMin, setRunMin] = useState(30);
-  const [runKm, setRunKm] = useState(5);
-  const [historyFilter, setHistoryFilter] = useState('all');
 
   const store = useRoutineStore(uid);
   const { last, history } = useHistory(uid, workouts);
@@ -389,34 +496,49 @@ export default function Training({ users, currentUser, workouts, actions }) {
     setEditing(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [freq, profile, uid]);
-  const day = days[Math.min(dayIdx, days.length - 1)];
+  // Usuarios (no admin) con compromiso: solo ven la rutina del día que les toca.
+  const restricted = !isAdmin && !!myDays && myDays.length === freq;
+  const todayIdx = myDays ? myDays.indexOf(today().getDay()) : -1;
+  const restDay = restricted && todayIdx < 0;
+  const shownIdx = restricted ? Math.max(0, todayIdx) : dayIdx;
+  const day = days[Math.max(0, Math.min(shownIdx, days.length - 1))];
+  const NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const nextTrain = (() => {
+    if (!restDay) return null;
+    const dow = today().getDay();
+    for (let k = 1; k <= 7; k++) {
+      const i = myDays.indexOf((dow + k) % 7);
+      if (i >= 0) return { name: NAMES[(dow + k) % 7], title: days[i]?.title };
+    }
+    return null;
+  })();
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 3500); };
 
   async function award(kind, points) {
     const { error } = await supabase
-      .from('bonus_logs')
+      .from('training_points')
       .upsert([{ user_id: uid, kind, points, log_date: dateKey(today()) }], { onConflict: 'user_id,kind,log_date', ignoreDuplicates: true });
-    if (error) console.warn('bonus', error);
-    return !error;
+    if (error) { console.warn('training_points', error); return error.message || 'error'; }
+    return null;
   }
 
   async function completeExercise(ex, sets, isPre = false) {
     await actions.logGym(uid, ex.name, sets);
-    const ok = await award('ex_' + slug(ex.name), EXERCISE_POINTS);
+    const err = await award('ex_' + slug(ex.name), EXERCISE_POINTS);
     const nextDone = { ...doneToday, [ex.name]: sets };
     setDoneToday(nextDone);
-    let msg = ok ? `+${EXERCISE_POINTS} pts · ${ex.name} ✓` : `${ex.name} ✓ (no se pudieron sumar puntos)`;
+    let msg = err ? `⚠️ ${ex.name} guardado, pero no sumó puntos: ${err}` : `+${EXERCISE_POINTS} pts · ${ex.name} ✓`;
     if (!isPre && day.ex.every((e) => nextDone[e.name])) {
-      const okR = await award('routine_complete', ROUTINE_BONUS);
-      msg = okR ? `🎉 ¡Rutina completa! +${ROUTINE_BONUS} pts de bonus` : '🎉 ¡Rutina completa!';
+      const errR = await award('routine_complete', ROUTINE_BONUS);
+      msg = errR ? `⚠️ Rutina completa, pero no sumó el bonus: ${errR}` : `🎉 ¡Rutina completa! +${ROUTINE_BONUS} pts de bonus`;
     }
     flash(msg);
     refreshDone();
   }
 
   // --- edición de rutina ---
-  const saveDay = (ex) => store.set(profile, freq, days.map((d, i) => (i === dayIdx ? { ...d, ex } : d)));
+  const saveDay = (ex) => store.set(profile, freq, days.map((d, i) => (i === shownIdx ? { ...d, ex } : d)));
   const changeEx = (i, v) => saveDay(day.ex.map((e, k) => (k === i ? v : e)));
   const moveEx = (i, dir) => { const a = day.ex.slice(); [a[i], a[i + dir]] = [a[i + dir], a[i]]; saveDay(a); };
   const removeEx = (i) => saveDay(day.ex.filter((_, k) => k !== i));
@@ -424,25 +546,13 @@ export default function Training({ users, currentUser, workouts, actions }) {
 
   const doneCount = day.ex.filter((e) => doneToday[e.name]).length;
 
-  const filteredWorkouts = historyFilter === 'all' ? workouts : workouts.filter((w) => w.user_id === historyFilter);
-  const runLogs = filteredWorkouts.filter((w) => w.type === 'cardio');
-  async function saveRun() {
-    if (!Number(runMin) && !Number(runKm)) return;
-    await actions.logRun(uid, Number(runMin), Number(runKm));
-  }
-  async function saveCardio() {
-    if (!Number(cardioMin)) return;
-    await actions.logRun(uid, Number(cardioMin), 0);
-    setCardioDone(true);
-  }
-
   return (
     <section className="screen active">
       <h2 className="section-title">Entrenamiento</h2>
       <div className="subtabs">
         <button className={tab === 'routine' ? 'active' : ''} onClick={() => setTab('routine')}>📋 Rutina</button>
         <button className={tab === 'progress' ? 'active' : ''} onClick={() => setTab('progress')}>📈 Progreso</button>
-        <button className={tab === 'run' ? 'active' : ''} onClick={() => setTab('run')}>🏃 Running</button>
+        <button className={tab === 'cardio' ? 'active' : ''} onClick={() => setTab('cardio')}>❤️ Cardio</button>
         <button className={tab === 'timer' ? 'active' : ''} onClick={() => setTab('timer')}>⏱</button>
       </div>
       {toast && <div className="toast-pts">{toast}</div>}
@@ -460,20 +570,35 @@ export default function Training({ users, currentUser, workouts, actions }) {
           )}
           <div className="hmeta" style={{ marginBottom: 10 }}>{routine.note}</div>
 
-          <label className="flabel">Frecuencia semanal</label>
-          <div className="day-picker" style={{ marginBottom: 12 }}>
-            {[2, 3, 4, 5].map((f) => (
-              <button key={f} type="button" className={freq === f ? 'sel' : ''} onClick={() => setFreq(f)}>{f} días</button>
-            ))}
-          </div>
+          {!restricted && (
+            <>
+              <label className="flabel">Frecuencia semanal (admin)</label>
+              <div className="day-picker" style={{ marginBottom: 12 }}>
+                {[2, 3, 4, 5].map((f) => (
+                  <button key={f} type="button" className={freq === f ? 'sel' : ''} onClick={() => setFreq(f)}>{f} días</button>
+                ))}
+              </div>
+              <div className="day-picker" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+                {days.map((d, i) => (
+                  <button key={i} type="button" className={dayIdx === i ? 'sel' : ''} onClick={() => { setDayIdx(i); setEditing(false); }}>
+                    {weekdayFor(i) !== null ? DOW_LABELS[weekdayFor(i)] : i + 1}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {restricted && !restDay && <div className="flabel">Hoy · {NAMES[today().getDay()]}</div>}
 
-          <div className="day-picker" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
-            {days.map((d, i) => (
-              <button key={i} type="button" className={dayIdx === i ? 'sel' : ''} onClick={() => { setDayIdx(i); setEditing(false); }}>
-                {weekdayFor(i) !== null ? DOW_LABELS[weekdayFor(i)] : i + 1}
-              </button>
-            ))}
-          </div>
+          {restDay ? (
+            <div className="log-card rest-card">
+              <div className="lname">😴 Hoy descansás</div>
+              <div className="hmeta" style={{ marginTop: 4 }}>
+                {nextTrain ? `Próximo entrenamiento: ${nextTrain.name}${nextTrain.title ? ' · ' + nextTrain.title : ''}.` : 'No tenés días de entrenamiento elegidos.'}
+              </div>
+              <div className="hmeta" style={{ marginTop: 4 }}>Podés sumar cardio desde la pestaña Cardio.</div>
+            </div>
+          ) : (
+          <>
 
           <div className="routine-title-row">
             <h3 className="shop-sub" style={{ margin: 0 }}>{day.title}</h3>
@@ -516,47 +641,16 @@ export default function Training({ users, currentUser, workouts, actions }) {
                 <RoutineExercise key={day.title + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]}
                   onComplete={(e, s) => completeExercise(e, s, false)} />
               ))}
-              {routine.cardio && (
-                <div className="log-card">
-                  <div className="lname">🚶 Cardio suave final (15-20 min)</div>
-                  <div className="hmeta">Bici, caminata inclinada o elíptica. Sin impacto.</div>
-                  <div className="field-row cols-2" style={{ marginTop: 8 }}>
-                    <input type="number" min="1" value={cardioMin} onChange={(e) => setCardioMin(e.target.value)} />
-                    <button className="btn btn-primary" onClick={saveCardio}>{cardioDone ? 'Completado ✓' : 'Registrar cardio'}</button>
-                  </div>
-                </div>
-              )}
             </>
+          )}
+          </>
           )}
         </div>
       )}
 
       {tab === 'progress' && <Progress history={history} />}
 
-      {tab === 'run' && (
-        <div>
-          <div className="field-row">
-            <label className="flabel">Ver historial de</label>
-            <div className="day-picker">
-              <button type="button" className={historyFilter === 'all' ? 'sel' : ''} onClick={() => setHistoryFilter('all')}>Todos</button>
-              {users.map((u) => (
-                <button key={u.id} type="button" className={historyFilter === u.id ? 'sel' : ''} onClick={() => setHistoryFilter(u.id)}>{u.name}</button>
-              ))}
-            </div>
-          </div>
-          <div className="field-row cols-2">
-            <div><label className="flabel">Duración (min)</label><input type="number" min="1" value={runMin} onChange={(e) => setRunMin(e.target.value)} /></div>
-            <div><label className="flabel">Distancia (km)</label><input type="number" min="0" step="0.1" value={runKm} onChange={(e) => setRunKm(e.target.value)} /></div>
-          </div>
-          <button className="btn btn-primary" style={{ width: '100%', marginBottom: 16 }} onClick={saveRun}>Registrar carrera</button>
-          {runLogs.length ? runLogs.map((r) => (
-            <div className="log-card" key={r.id}>
-              <div className="lhead"><span className="lname">{r.distance_km} km</span><span className="ldate">{fmtShort(new Date(r.created_at))} · {userName(users, r.user_id)}</span></div>
-              <div className="ldetail">{r.duration_min} minutos{r.distance_km ? ` · ritmo ${(r.duration_min / r.distance_km).toFixed(1)} min/km` : ''}</div>
-            </div>
-          )) : <div className="empty">Sin registros todavía.</div>}
-        </div>
-      )}
+      {tab === 'cardio' && <Cardio users={users} uid={uid} actions={actions} workouts={workouts} onSaved={flash} />}
 
       {tab === 'timer' && <TimerTool />}
     </section>

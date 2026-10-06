@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CAL_DOW_LABELS, DOW_LABELS, dateKey, mondayOfWeek, today } from '../lib/dates';
 import {
   habitDayStatus, findRecoverableMiss, findJokerTarget, parseReward,
-  incompleteToday, nextReminder
+  incompleteToday, nextReminder, habitLabel
 } from '../lib/logic';
 import { supabase } from '../lib/supabase';
 import { habitDays } from '../lib/commitments';
@@ -51,7 +51,7 @@ export function useHabitReminders(habits, habitLogs, userId, trackingStartDate) 
             localStorage.setItem(storeKey, '1');
             notify(
               next.hour === 23 ? '⏰ Última llamada' : 'Hábitos pendientes',
-              `Te faltan ${left.length}: ${left.slice(0, 3).map((h) => h.name).join(', ')}${left.length > 3 ? '…' : ''}. El día cierra a las 04:00.`
+              `Te faltan ${left.length}: ${left.slice(0, 3).map((h) => habitLabel(h)).join(', ')}${left.length > 3 ? '…' : ''}. El día cierra a las 04:00.`
             );
           }
         }
@@ -311,14 +311,14 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
               <div className="habit-row">
                 <div className={'check disabled' + (pct >= 100 ? ' done' : '')}>{pct >= 100 ? '✓' : ''}</div>
                 <div className="habit-info">
-                  <div className="hname">{h.name}{h.shared ? ' 🤝' : ''}</div>
+                  <div className="hname">{habitLabel(h)}{h.shared ? ' 🤝' : ''}</div>
                   <div className="hmeta">{dayLabels} · meta {h.target} {h.unit}/día</div>
                 </div>
                 {scheduledToday && <StatusTag status={habitDayStatus(h, t, currentUser.id, habitLogs, trackingStartDate)} />}
                 <div className="habit-pts">hasta +{h.points}</div>
                 <button className="rm" style={{ color: 'var(--court-light)' }} onClick={() => setEditingId(h.id)}>✎</button>
                 {isAdmin && (
-                  <button className="rm" onClick={() => window.confirm(`¿Eliminar "${h.name}"?`) && actions.deleteHabit(h.id)}>✕</button>
+                  <button className="rm" onClick={() => window.confirm(`¿Eliminar "${habitLabel(h)}"?`) && actions.deleteHabit(h.id)}>✕</button>
                 )}
               </div>
               <div className="qty-block">
@@ -355,19 +355,19 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
                 {done ? '✓' : ''}
               </div>
               <div className="habit-info">
-                <div className="hname">{h.name}{h.shared ? ' 🤝' : ''}</div>
+                <div className="hname">{habitLabel(h)}{h.shared ? ' 🤝' : ''}</div>
                 <div className="hmeta">{dayLabels}{scheduledToday ? '' : ' · no corresponde hoy'}</div>
               </div>
               {scheduledToday && <StatusTag status={status} />}
               <div className="habit-pts">+{h.points}</div>
               <button className="rm" style={{ color: 'var(--court-light)' }} onClick={() => setEditingId(h.id)}>✎</button>
               {isAdmin && (
-                <button className="rm" onClick={() => window.confirm(`¿Eliminar "${h.name}"?`) && actions.deleteHabit(h.id)}>✕</button>
+                <button className="rm" onClick={() => window.confirm(`¿Eliminar "${habitLabel(h)}"?`) && actions.deleteHabit(h.id)}>✕</button>
               )}
             </div>
             {recoverable && (
               <div className="recover-row">
-                <span>Tenés un día perdido esta semana en "{h.name}".</span>
+                <span>Tenés un día perdido esta semana en "{habitLabel(h)}".</span>
                 <button className="btn btn-ghost btn-small" onClick={() => recover(h)}>Recuperar con hoy</button>
               </div>
             )}
@@ -382,7 +382,7 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
         );
       })}
 
-      <HabitCreateForm onAdd={actions.addHabit} isAdmin={isAdmin} />
+      {isAdmin && <HabitCreateForm onAdd={actions.addHabit} isAdmin={isAdmin} />}
 
       {isAdmin && (
         <div className="admin-panel" style={{ borderColor: 'var(--coral)' }}>

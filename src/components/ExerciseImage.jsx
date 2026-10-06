@@ -5,11 +5,16 @@ import ExerciseIcon from './ExerciseIcon';
 // Orden de prioridad: tu foto propia → foto de la base → ícono de respaldo.
 const BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/';
 const DB_URL = BASE + 'dist/exercises.json';
-const MAP_KEY = 'arriba-eximg-map';
+const MAP_KEY = 'arriba-eximg-map2';
 const PIC_KEY = (uid, name) => `arriba-expic-${uid}-${name}`;
 
 export function iconFor(name) {
   const n = (name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (/farmer/.test(n)) return 'Farmer Walk';
+  if (/talones/.test(n)) return 'Caminata talones';
+  if (/dorsiflex/.test(n)) return 'Dorsiflexión';
+  if (/equilibrio/.test(n)) return 'Equilibrio';
+  if (/alfabeto/.test(n)) return 'Alfabeto pie';
   if (/zancada|bulgara|patada/.test(n)) return 'Zancadas';
   if (/sentadilla|goblet|hip thrust|puente|salto|pliometria|gemelos|abduccion/.test(n)) return 'Sentadilla';
   if (/press de banca|press de pecho|press inclinado|aperturas/.test(n)) return 'Press de banca';
@@ -22,12 +27,15 @@ export function iconFor(name) {
   return 'default';
 }
 
+// Tokeniza sin apóstrofes y con plural simple (raises → raise, farmer's → farmer).
+const tok = (s) => (s || '').toLowerCase().replace(/'/g, '').split(/[^a-z0-9]+/).filter(Boolean).map((t) => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t));
+
 let dbPromise = null;
 const loadDb = () => {
   if (!dbPromise) {
     dbPromise = fetch(DB_URL)
       .then((r) => r.json())
-      .then((list) => list.map((e) => ({ id: e.id, tokens: new Set(e.name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) })))
+      .then((list) => list.map((e) => ({ id: e.id, tokens: new Set(tok(e.name)) })))
       .catch(() => { dbPromise = null; return []; });
   }
   return dbPromise;
@@ -41,14 +49,19 @@ async function resolveId(en) {
   if (map[en] !== undefined) return map[en];
   const db = await loadDb();
   if (!db.length) return null;
-  const q = en.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  // `en` admite alternativas separadas por | (se prueba en orden).
   let best = null;
-  let bestScore = -1;
-  db.forEach((e) => {
-    if (!q.every((t) => e.tokens.has(t))) return;
-    const score = 100 - (e.tokens.size - q.length);
-    if (score > bestScore) { bestScore = score; best = e.id; }
-  });
+  for (const alt of en.split('|')) {
+    const q = tok(alt);
+    if (!q.length) continue;
+    let bestScore = -1;
+    db.forEach((e) => {
+      if (!q.every((t) => e.tokens.has(t))) return;
+      const score = 100 - (e.tokens.size - q.length);
+      if (score > bestScore) { bestScore = score; best = e.id; }
+    });
+    if (best) break;
+  }
   map[en] = best;
   try { localStorage.setItem(MAP_KEY, JSON.stringify(map)); } catch (e) { /* ignore */ }
   return best;
@@ -120,7 +133,7 @@ export default function ExerciseImage({ name, en, uid, editable = false }) {
       ) : (
         <div className="ex-photo-fallback"><ExerciseIcon name={iconFor(name)} /></div>
       )}
-      {editable && (
+      {(editable || !src) && (
         <div className="ex-photo-tools">
           <button type="button" onClick={() => fileRef.current?.click()}>📷</button>
           {custom && <button type="button" onClick={clearCustom}>✕</button>}

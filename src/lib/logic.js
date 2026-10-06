@@ -56,6 +56,9 @@ export function dayAggregateStatus(habits, dateObj, uid, habitLogs, trackingStar
 // ---------------------------------------------------------------------------
 // ECONOMÍA HÍBRIDA Q4
 // ---------------------------------------------------------------------------
+// Nombre a mostrar: el hábito de salir a correr ahora se llama Cardio.
+export const habitLabel = (h) => (h.type === 'run' && /correr|run|trot/i.test(h.name) ? 'Cardio' : h.name);
+
 export const SCOPE = { INDIVIDUAL: 'individual', SHARED: 'shared' };
 
 // Fracción de los puntos ganados por cada uno que también alimenta el Pozo Común.
@@ -69,6 +72,16 @@ export const Q4_CATALOG = [
   { name: 'Tiempo de Gaming / Cine', emoji: '🎮', cost: 800, scope: 'individual', description: 'Gaming o cine individual.' },
   { name: 'Salida corta / Desayuno afuera', emoji: '🥐', cost: 1200, scope: 'individual', description: 'Una salida corta o desayuno afuera.' },
   { name: 'Comodín de descanso', emoji: '🃏', cost: 3500, scope: 'individual', description: 'Saltá 1 hábito sin perder la racha.' },
+  { name: 'Postre / helado juntos', emoji: '🍨', cost: 1500, scope: 'shared', description: 'Postre o helado de a dos.' },
+  { name: 'Elegir la peli o serie de la semana', emoji: '🎬', cost: 1200, scope: 'shared', description: 'Quien canjea elige qué ver.' },
+  { name: 'Noche de juegos de mesa + snacks', emoji: '🎲', cost: 2000, scope: 'shared', description: 'Juegos de mesa con picada.' },
+  { name: 'Desayuno en la cama', emoji: '🥞', cost: 2200, scope: 'shared', description: 'Desayuno servido en la cama.' },
+  { name: 'Día sin tareas del hogar', emoji: '🧹', cost: 3500, scope: 'shared', description: 'El otro se encarga de las tareas del día.' },
+  { name: 'Picnic en el parque', emoji: '🧺', cost: 3500, scope: 'shared', description: 'Picnic armado para los dos.' },
+  { name: 'Cine juntos (entradas + pochoclos)', emoji: '🎟️', cost: 4500, scope: 'shared', description: 'Entradas y pochoclos incluidos.' },
+  { name: 'Clase o taller nuevo juntos', emoji: '👩‍🍳', cost: 8000, scope: 'shared', description: 'Cocina, baile, cerámica… algo nuevo.' },
+  { name: 'Noche de hotel en la ciudad', emoji: '🏨', cost: 11000, scope: 'shared', description: 'Una noche de hotel de a dos.' },
+  { name: 'Show / concierto / evento', emoji: '🎤', cost: 12500, scope: 'shared', description: 'Entradas para un show o evento.' },
   { name: 'Noche de películas + delivery', emoji: '🍿', cost: 2500, scope: 'shared', description: 'Peli en casa y pedido a elección.' },
   { name: 'Brunch / café juntos', emoji: '☕', cost: 3000, scope: 'shared', description: 'Desayuno o café largo de a dos.' },
   { name: 'Masaje en casa', emoji: '💆', cost: 4000, scope: 'shared', description: 'Masaje o noche de relax en casa.' },
