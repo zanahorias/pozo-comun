@@ -3,7 +3,7 @@ import { useAppData } from './hooks/useAppData';
 import ProfileGate from './components/ProfileGate';
 import Header from './components/Header';
 import Board from './components/Board';
-import Habits from './components/Habits';
+import Habits, { useHabitReminders } from './components/Habits';
 import Training from './components/Training';
 import Shop from './components/Shop';
 import TabBar from './components/TabBar';
@@ -24,6 +24,9 @@ export default function App() {
   useEffect(() => {
     if (currentUserId) localStorage.setItem(PROFILE_KEY, currentUserId);
   }, [currentUserId]);
+
+  // Recordatorios 20:00 / 23:00 desde cualquier pestaña (debe ir antes de los return).
+  useHabitReminders(habits, habitLogs, currentUserId, trackingStartDate);
 
   if (loading) {
     return <div className="empty" style={{ paddingTop: 80 }}>Cargando…</div>;

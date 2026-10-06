@@ -109,7 +109,7 @@ function GoalCard({ currentGoal, goalProgress, isAdmin, actions }) {
 }
 
 export default function Board({ users, habits, habitLogs, bonusLogs, workouts, rewards, redemptions, currentUser, trackingStartDate, fetchMonthLogs, currentGoal, goalProgress, currentMultiplier, multiplierInfo, isAdmin, actions }) {
-  const total = pool(habitLogs, redemptions, bonusLogs);
+  const total = pool(habitLogs, redemptions, bonusLogs, rewards);
   const feed = buildFeed(habitLogs, bonusLogs, workouts, redemptions, rewards, users);
 
   const now = new Date();

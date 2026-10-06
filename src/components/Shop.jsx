@@ -1,18 +1,56 @@
-import { useState } from 'react';
-import { pool } from '../lib/logic';
+import { useCallback, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+import {
+  SCOPE, Q4_CATALOG, parseReward, encodeScope,
+  individualBalance, poolBalance
+} from '../lib/logic';
+import '../theme-q4.css';
+
+// Historial completo (no solo el mes en curso) para que los saldos sean reales.
+function useEconomy(deps) {
+  const [data, setData] = useState(null);
+  const refresh = useCallback(async () => {
+    const [u, h, hl, bl, rd, rw] = await Promise.all([
+      supabase.from('users').select('id,name').order('created_at'),
+      supabase.from('habits').select('id,shared,points'),
+      supabase.from('habit_logs').select('habit_id,user_id,log_date,points'),
+      supabase.from('bonus_logs').select('user_id,points'),
+      supabase.from('redemptions').select('reward_id,redeemed_by,points_spent'),
+      supabase.from('rewards').select('*')
+    ]);
+    const err = [u, h, hl, bl, rd, rw].find((r) => r.error);
+    if (err) { console.error(err.error); return null; }
+    const next = {
+      users: u.data || [], habits: h.data || [], habitLogs: hl.data || [],
+      bonusLogs: bl.data || [], redemptions: rd.data || [], rewards: rw.data || []
+    };
+    setData(next);
+    return next;
+  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { refresh(); }, [refresh, ...deps]);
+  return [data, refresh];
+}
 
 function RewardCreateForm({ onAdd }) {
   const [kind, setKind] = useState('normal');
+  const [scope, setScope] = useState(SCOPE.INDIVIDUAL);
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [cost, setCost] = useState(30);
+  const [cost, setCost] = useState(450);
   const [emoji, setEmoji] = useState('🎁');
   const [multValue, setMultValue] = useState(2);
   const [multHours, setMultHours] = useState(24);
 
   function submit() {
     if (!name.trim()) return;
-    const reward = { name: name.trim(), description: desc.trim(), cost_points: Number(cost) || 1, emoji: emoji || '🎁', kind };
+    const reward = {
+      name: name.trim(),
+      description: encodeScope(desc.trim(), scope),
+      cost_points: Number(cost) || 1,
+      emoji: emoji || '🎁',
+      kind
+    };
     if (kind === 'multiplier') {
       reward.multiplier_value = Number(multValue) || 2;
       reward.multiplier_hours = Number(multHours) || 24;
@@ -25,6 +63,10 @@ function RewardCreateForm({ onAdd }) {
   return (
     <div className="admin-panel">
       <label className="flabel">Nueva recompensa</label>
+      <div className="kind-toggle">
+        <button type="button" className={scope === SCOPE.INDIVIDUAL ? 'sel' : ''} onClick={() => setScope(SCOPE.INDIVIDUAL)}>Individual</button>
+        <button type="button" className={scope === SCOPE.SHARED ? 'sel' : ''} onClick={() => setScope(SCOPE.SHARED)}>Pozo Común</button>
+      </div>
       <div className="kind-toggle">
         <button type="button" className={kind === 'normal' ? 'sel' : ''} onClick={() => setKind('normal')}>Normal</button>
         <button type="button" className={kind === 'multiplier' ? 'sel' : ''} onClick={() => setKind('multiplier')}>Multiplicador</button>
@@ -46,19 +88,25 @@ function RewardCreateForm({ onAdd }) {
   );
 }
 
-function RewardCard({ reward, total, isAdmin, actions, currentUser }) {
+function RewardCard({ reward, balance, isAdmin, actions, onRedeem, busy }) {
+  const { scope, description } = parseReward(reward);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(reward.name);
-  const [desc, setDesc] = useState(reward.description || '');
+  const [desc, setDesc] = useState(description);
   const [cost, setCost] = useState(reward.cost_points);
   const [emoji, setEmoji] = useState(reward.emoji);
+  const [sc, setSc] = useState(scope);
   const [multValue, setMultValue] = useState(reward.multiplier_value || 2);
   const [multHours, setMultHours] = useState(reward.multiplier_hours || 24);
+
+  const enough = balance >= reward.cost_points;
+  const missing = Math.max(0, reward.cost_points - balance);
+  const pct = Math.min(100, Math.round((Math.max(0, balance) / reward.cost_points) * 100));
 
   function save() {
     const patch = {
       name: name.trim() || reward.name,
-      description: desc.trim(),
+      description: encodeScope(desc.trim(), sc),
       cost_points: Number(cost) || reward.cost_points,
       emoji: emoji || reward.emoji
     };
@@ -73,6 +121,10 @@ function RewardCard({ reward, total, isAdmin, actions, currentUser }) {
   if (editing) {
     return (
       <div className="reward-card">
+        <div className="kind-toggle">
+          <button type="button" className={sc === SCOPE.INDIVIDUAL ? 'sel' : ''} onClick={() => setSc(SCOPE.INDIVIDUAL)}>Individual</button>
+          <button type="button" className={sc === SCOPE.SHARED ? 'sel' : ''} onClick={() => setSc(SCOPE.SHARED)}>Pozo</button>
+        </div>
         <div className="field-row cols-2">
           <input value={emoji} maxLength={2} onChange={(e) => setEmoji(e.target.value)} />
           <input type="number" min="1" value={cost} onChange={(e) => setCost(e.target.value)} />
@@ -94,7 +146,7 @@ function RewardCard({ reward, total, isAdmin, actions, currentUser }) {
   }
 
   return (
-    <div className="reward-card">
+    <div className={'reward-card ' + (scope === SCOPE.SHARED ? 'is-shared' : 'is-individual')}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div className="reward-emoji">{reward.emoji}</div>
         {isAdmin && (
@@ -108,32 +160,117 @@ function RewardCard({ reward, total, isAdmin, actions, currentUser }) {
       {reward.kind === 'multiplier' && (
         <div className="reward-badge">✨ x{reward.multiplier_value} por {reward.multiplier_hours}hs</div>
       )}
-      <div className="reward-desc">{reward.description}</div>
-      <div className="reward-cost">{reward.cost_points} pts</div>
+      <div className="reward-desc">{description}</div>
+      <div className="reward-cost">{reward.cost_points.toLocaleString('es-UY')} pts</div>
+      {!enough && (
+        <div>
+          <div className="bar-track"><div className="bar-fill" style={{ width: pct + '%' }} /></div>
+          <div className="hmeta" style={{ marginTop: 4 }}>Faltan {missing.toLocaleString('es-UY')} pts</div>
+        </div>
+      )}
       <button
-        className={'btn ' + (total >= reward.cost_points ? 'btn-primary' : 'btn-ghost')}
-        disabled={total < reward.cost_points}
-        onClick={() => actions.redeem(reward, currentUser.id)}
+        className={'btn ' + (enough ? 'btn-primary' : 'btn-ghost')}
+        disabled={!enough || busy}
+        onClick={() => onRedeem(reward, scope)}
       >
-        {total >= reward.cost_points ? 'Canjear' : 'Puntos insuficientes'}
+        {enough ? 'Canjear' : 'Puntos insuficientes'}
       </button>
     </div>
   );
 }
 
 export default function Shop({ rewards, habitLogs, bonusLogs, redemptions, currentUser, isAdmin, actions }) {
-  const total = pool(habitLogs, redemptions, bonusLogs);
-  const sorted = [...rewards].sort((a, b) => a.cost_points - b.cost_points);
+  const [eco, refresh] = useEconomy([habitLogs, bonusLogs, redemptions, rewards]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const data = eco || { users: [], habits: [], habitLogs, bonusLogs, redemptions, rewards };
+  const mine = individualBalance(currentUser.id, data.habitLogs, data.bonusLogs, data.redemptions, data.rewards);
+  const shared = poolBalance(data);
+
+  const visible = rewards.map((r) => ({ r, ...parseReward(r) })).sort((a, b) => a.r.cost_points - b.r.cost_points);
+  const individuals = visible.filter((x) => x.scope === SCOPE.INDIVIDUAL);
+  const commons = visible.filter((x) => x.scope === SCOPE.SHARED);
+
+  async function handleRedeem(reward, scope) {
+    if (busy) return;
+    setBusy(true);
+    setMsg('');
+    try {
+      // Re-verificar contra datos frescos justo antes de canjear.
+      const fresh = (await refresh()) || data;
+      const balance = scope === SCOPE.SHARED
+        ? poolBalance(fresh)
+        : individualBalance(currentUser.id, fresh.habitLogs, fresh.bonusLogs, fresh.redemptions, fresh.rewards);
+      if (balance < reward.cost_points) {
+        setMsg(scope === SCOPE.SHARED ? 'El Pozo Común no alcanza.' : 'Tu saldo individual no alcanza.');
+        return;
+      }
+      const from = scope === SCOPE.SHARED ? 'del Pozo Común' : 'de tu saldo individual';
+      if (!window.confirm(`¿Canjear "${reward.name}" por ${reward.cost_points} pts ${from}?`)) return;
+      await actions.redeem(reward, currentUser.id);
+      await refresh();
+      setMsg(`Canjeado: ${reward.name} ✓`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadQ4Catalog() {
+    if (!window.confirm('¿Cargar/actualizar el catálogo Q4 (precios y tipo Individual/Pozo)?')) return;
+    const norm = (s) => (s || '').toLowerCase().trim();
+    for (const c of Q4_CATALOG) {
+      const existing = rewards.find((r) => norm(r.name) === norm(c.name));
+      const payload = {
+        name: c.name, emoji: c.emoji, cost_points: c.cost,
+        description: encodeScope(c.description, c.scope)
+      };
+      if (existing) await actions.updateReward(existing.id, payload);
+      else await actions.addReward({ ...payload, kind: 'normal' });
+    }
+    refresh();
+  }
 
   return (
     <section className="screen active">
       <h2 className="section-title">Tienda de recompensas</h2>
+
+      <div className="wallets">
+        <div className="wallet wallet-me">
+          <div className="wallet-label">Tu saldo · {currentUser.name}</div>
+          <div className="wallet-value">{mine.toLocaleString('es-UY')}</div>
+        </div>
+        <div className="wallet wallet-pool">
+          <div className="wallet-label">Pozo Común</div>
+          <div className="wallet-value">{shared.toLocaleString('es-UY')}</div>
+        </div>
+      </div>
+      {msg && <div className="shop-msg">{msg}</div>}
+
+      <h3 className="shop-sub">Uso individual <span className="tag tag-ind">Puntos individuales</span></h3>
       <div className="reward-grid">
-        {sorted.map((r) => (
-          <RewardCard key={r.id} reward={r} total={total} isAdmin={isAdmin} actions={actions} currentUser={currentUser} />
+        {individuals.map(({ r }) => (
+          <RewardCard key={r.id} reward={r} balance={mine} isAdmin={isAdmin} actions={actions} onRedeem={handleRedeem} busy={busy} />
         ))}
       </div>
-      {isAdmin && <RewardCreateForm onAdd={actions.addReward} />}
+      {!individuals.length && <div className="empty">Sin recompensas individuales.</div>}
+
+      <h3 className="shop-sub">Pozo Común <span className="tag tag-pool">Puntos compartidos</span></h3>
+      <div className="reward-grid">
+        {commons.map(({ r }) => (
+          <RewardCard key={r.id} reward={r} balance={shared} isAdmin={isAdmin} actions={actions} onRedeem={handleRedeem} busy={busy} />
+        ))}
+      </div>
+      {!commons.length && <div className="empty">Sin recompensas de Pozo Común.</div>}
+
+      {isAdmin && (
+        <>
+          <button className="btn btn-ghost" style={{ width: '100%', marginTop: 16 }} onClick={loadQ4Catalog}>
+            Cargar catálogo Q4
+          </button>
+          <RewardCreateForm onAdd={actions.addReward} />
+        </>
+      )}
     </section>
   );
 }

@@ -1,6 +1,10 @@
 export const DOW_LABELS = ['D', 'L', 'M', 'M', 'J', 'V', 'S']; // 0=domingo..6=sábado
 export const CAL_DOW_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']; // calendario arranca en lunes
 
+// El "día" de hábitos y rutinas cierra a las 04:00 AM: antes de esa hora
+// todavía se está registrando el día anterior.
+export const CUTOFF_HOUR = 4;
+
 export function stripTime(d) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
@@ -16,8 +20,22 @@ export function dateKey(d) {
   );
 }
 
+// Instante "efectivo": ahora menos CUTOFF_HOUR horas.
+export function effectiveNow() {
+  return new Date(Date.now() - CUTOFF_HOUR * 3600 * 1000);
+}
+
+// "Hoy" respetando el corte de las 04:00.
 export function today() {
-  return stripTime(new Date());
+  return stripTime(effectiveNow());
+}
+
+// Próximo corte (04:00) a partir de ahora.
+export function nextCutoff() {
+  const n = new Date();
+  const c = new Date(n.getFullYear(), n.getMonth(), n.getDate(), CUTOFF_HOUR, 0, 0, 0);
+  if (c <= n) c.setDate(c.getDate() + 1);
+  return c;
 }
 
 export function fmtShort(d) {

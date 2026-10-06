@@ -1,8 +1,86 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CAL_DOW_LABELS, DOW_LABELS, dateKey, mondayOfWeek, today } from '../lib/dates';
-import { habitDayStatus, findRecoverableMiss } from '../lib/logic';
+import {
+  habitDayStatus, findRecoverableMiss, findJokerTarget, parseReward,
+  incompleteToday, nextReminder
+} from '../lib/logic';
+import { supabase } from '../lib/supabase';
+import '../theme-q4.css';
 
 const DEFAULT_NEW_POINTS = 5;
+
+const STATUS_LABEL = { done: 'Completado', pending: 'Pendiente', partial: 'En progreso', missed: 'Perdido' };
+
+function StatusTag({ status }) {
+  if (!STATUS_LABEL[status]) return null;
+  return <span className={'status-tag st-' + status}>{STATUS_LABEL[status]}</span>;
+}
+
+// Recordatorios locales a las 20:00 y 23:00 si quedan hábitos sin cumplir antes
+// del corte de las 04:00. Funcionan mientras la app/PWA esté abierta o en segundo
+// plano (las notificaciones locales no pueden dispararse con la app cerrada).
+export function useHabitReminders(habits, habitLogs, userId, trackingStartDate) {
+  const ref = useRef({});
+  ref.current = { habits, habitLogs, userId, trackingStartDate };
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return undefined;
+    if (Notification.permission === 'default') Notification.requestPermission();
+    let timer;
+
+    async function notify(title, body) {
+      try {
+        const reg = navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null;
+        if (reg) reg.showNotification(title, { body, tag: 'habit-reminder' });
+        else new Notification(title, { body, tag: 'habit-reminder' });
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    function schedule() {
+      const next = nextReminder();
+      if (!next) return;
+      timer = setTimeout(() => {
+        const { habits: hs, habitLogs: ls, userId: uid, trackingStartDate: tsd } = ref.current;
+        const storeKey = 'habit-reminder-' + uid + '-' + next.key;
+        if (Notification.permission === 'granted' && !localStorage.getItem(storeKey)) {
+          const left = incompleteToday(hs || [], uid, ls || [], tsd);
+          if (left.length) {
+            localStorage.setItem(storeKey, '1');
+            notify(
+              next.hour === 23 ? '⏰ Última llamada' : 'Hábitos pendientes',
+              `Te faltan ${left.length}: ${left.slice(0, 3).map((h) => h.name).join(', ')}${left.length > 3 ? '…' : ''}. El día cierra a las 04:00.`
+            );
+          }
+        }
+        schedule();
+      }, Math.max(1000, next.at.getTime() - Date.now()));
+    }
+    schedule();
+    return () => clearTimeout(timer);
+  }, [userId]);
+}
+
+// Comodines disponibles = comodines canjeados por el usuario − comodines usados
+// (logs con 0 puntos). Se consulta el historial completo.
+function useJokerBalance(userId, deps) {
+  const [count, setCount] = useState(0);
+  const refresh = useCallback(async () => {
+    const [rw, rd, used] = await Promise.all([
+      supabase.from('rewards').select('id,name,description'),
+      supabase.from('redemptions').select('reward_id').eq('redeemed_by', userId),
+      supabase.from('habit_logs').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('points', 0)
+    ]);
+    if (rw.error || rd.error || used.error) return;
+    const jokerIds = new Set((rw.data || []).filter((r) => parseReward(r).isJoker).map((r) => r.id));
+    const bought = (rd.data || []).filter((r) => jokerIds.has(r.reward_id)).length;
+    setCount(Math.max(0, bought - (used.count || 0)));
+  }, [userId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { refresh(); }, [refresh, ...deps]);
+  return [count, refresh];
+}
 
 function WeekStrip({ habit, currentUser, habitLogs, trackingStartDate }) {
   const monday = mondayOfWeek(today());
@@ -168,10 +246,37 @@ function HabitEditForm({ habit, isAdmin, onSave, onCancel }) {
 export default function Habits({ habits, habitLogs, currentUser, isAdmin, actions, trackingStartDate }) {
   const t = today();
   const [editingId, setEditingId] = useState(null);
+  const [jokers, refreshJokers] = useJokerBalance(currentUser.id, [habitLogs]);
+  useHabitReminders(habits, habitLogs, currentUser.id, trackingStartDate);
+
+  // Comodín: cuenta como cumplido (0 pts) y no rompe la racha.
+  async function applyJoker(habit, existingEntry) {
+    if (jokers < 1) return;
+    if (!window.confirm(`¿Usar 1 comodín en "${habit.name}"? Cuenta como cumplido y no suma puntos.`)) return;
+    const amount = habit.kind === 'quantity' ? habit.target : null;
+    const { error } = existingEntry
+      ? await supabase.from('habit_logs').update({ points: 0, amount }).eq('id', existingEntry.id)
+      : await supabase.from('habit_logs').upsert(
+          [{ habit_id: habit.id, user_id: currentUser.id, log_date: dateKey(t), points: 0, amount }],
+          { onConflict: 'habit_id,user_id,log_date' }
+        );
+    if (error) window.alert('No se pudo usar el comodín.');
+    refreshJokers();
+  }
+
+  // Recuperar: se valida de nuevo al hacer click (el día en curso nunca se toca).
+  function recover(h) {
+    const entry = findRecoverableMiss(h, currentUser.id, habitLogs, trackingStartDate);
+    if (!entry || entry.log_date >= dateKey(today())) return;
+    actions.recoverHabitDay(entry, h);
+  }
 
   return (
     <section className="screen active">
       <h2 className="section-title">Hábitos de la semana</h2>
+      <div className="hmeta" style={{ marginBottom: 10 }}>
+        El día cierra a las 04:00 AM · Comodines: <b>{jokers}</b>
+      </div>
       {habits.map((h) => {
         if (editingId === h.id) {
           return (
@@ -204,6 +309,7 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
                   <div className="hname">{h.name}{h.shared ? ' 🤝' : ''}</div>
                   <div className="hmeta">{dayLabels} · meta {h.target} {h.unit}/día</div>
                 </div>
+                {scheduledToday && <StatusTag status={habitDayStatus(h, t, currentUser.id, habitLogs, trackingStartDate)} />}
                 <div className="habit-pts">hasta +{h.points}</div>
                 <button className="rm" style={{ color: 'var(--court-light)' }} onClick={() => setEditingId(h.id)}>✎</button>
                 {isAdmin && (
@@ -214,7 +320,12 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
                 <div className="qty-bar-row"><span><b>{amount}</b> / {h.target} {h.unit}</span><span>{pct}%</span></div>
                 <div className="bar-track"><div className="bar-fill" style={{ width: pct + '%' }} /></div>
                 {scheduledToday ? (
-                  <QtyControls habit={h} onAdd={(delta) => actions.addQuantity(h, currentUser.id, delta)} />
+                  <>
+                    <QtyControls habit={h} onAdd={(delta) => actions.addQuantity(h, currentUser.id, delta)} />
+                    {jokers > 0 && pct < 100 && (
+                      <button className="btn btn-ghost btn-small" style={{ marginTop: 8 }} onClick={() => applyJoker(h, entry)}>🃏 Usar comodín hoy</button>
+                    )}
+                  </>
                 ) : (
                   <div className="hmeta" style={{ marginTop: 6 }}>No corresponde hoy</div>
                 )}
@@ -227,6 +338,8 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
         const status = scheduledToday ? habitDayStatus(h, t, currentUser.id, habitLogs, trackingStartDate) : 'none';
         const done = status === 'done';
         const recoverable = findRecoverableMiss(h, currentUser.id, habitLogs, trackingStartDate);
+        const jokerTarget = jokers > 0 ? findJokerTarget(h, currentUser.id, habitLogs, trackingStartDate) : null;
+        const todayEntry = habitLogs.find((e) => e.habit_id === h.id && e.user_id === currentUser.id && e.log_date === dateKey(t));
         return (
           <div className="habit-card" key={h.id}>
             <div className="habit-row">
@@ -240,6 +353,7 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
                 <div className="hname">{h.name}{h.shared ? ' 🤝' : ''}</div>
                 <div className="hmeta">{dayLabels}{scheduledToday ? '' : ' · no corresponde hoy'}</div>
               </div>
+              {scheduledToday && <StatusTag status={status} />}
               <div className="habit-pts">+{h.points}</div>
               <button className="rm" style={{ color: 'var(--court-light)' }} onClick={() => setEditingId(h.id)}>✎</button>
               {isAdmin && (
@@ -249,7 +363,13 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
             {recoverable && (
               <div className="recover-row">
                 <span>Tenés un día perdido esta semana en "{h.name}".</span>
-                <button className="btn btn-ghost btn-small" onClick={() => actions.recoverHabitDay(recoverable, h)}>Recuperar con hoy</button>
+                <button className="btn btn-ghost btn-small" onClick={() => recover(h)}>Recuperar con hoy</button>
+              </div>
+            )}
+            {jokers > 0 && (status === 'pending' || jokerTarget) && (
+              <div className="recover-row">
+                <span>{status === 'pending' ? 'Saltá este hábito hoy sin perder la racha.' : 'Cubrí un día perdido sin romper la racha.'}</span>
+                <button className="btn btn-ghost btn-small" onClick={() => applyJoker(h, status === 'pending' ? todayEntry : jokerTarget)}>🃏 Usar comodín</button>
               </div>
             )}
             <WeekStrip habit={h} currentUser={currentUser} habitLogs={habitLogs} trackingStartDate={trackingStartDate} />
