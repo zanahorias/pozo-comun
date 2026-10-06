@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { dateKey, stripTime, today } from '../lib/dates';
 import { computeMissingRows, currentStreak, isPerfectDay } from '../lib/logic';
+import { loadCommitments } from '../lib/commitments';
 
 const BONUS_POINTS = { perfect_day: 10, streak3: 20, streak7: 50 };
 
@@ -117,6 +118,7 @@ export function useAppData() {
 
   useEffect(() => {
     (async () => {
+      await loadCommitments(); // los días por usuario deben estar antes de calcular faltantes
       const initial = await fetchAll();
       if (!initial) return;
       const missing = computeMissingRows(initial.habits, initial.users, initial.habitLogs, initial.trackingStartDate);

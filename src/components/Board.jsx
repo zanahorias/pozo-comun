@@ -9,7 +9,8 @@ function userName(users, uid) {
 const BONUS_LABELS = {
   perfect_day: 'día perfecto',
   streak3: 'racha de 3 días',
-  streak7: 'racha de 7 días'
+  streak7: 'racha de 7 días',
+  routine_complete: 'la rutina completa'
 };
 
 function buildFeed(habitLogs, bonusLogs, workouts, redemptions, rewards, users) {
@@ -28,7 +29,7 @@ function buildFeed(habitLogs, bonusLogs, workouts, redemptions, rewards, users) 
     items.push({
       ts: b.created_at,
       who: b.user_id,
-      text: `logró ${BONUS_LABELS[b.kind] || 'un bono'} 🎉`,
+      text: b.kind && b.kind.startsWith('ex_') ? 'completó un ejercicio 💪' : `logró ${BONUS_LABELS[b.kind] || 'un bono'} 🎉`,
       pts: b.points,
       sign: 'plus'
     });
@@ -104,6 +105,18 @@ function GoalCard({ currentGoal, goalProgress, isAdmin, actions }) {
           <button className="btn btn-ghost btn-small" onClick={() => window.confirm('¿Borrar este objetivo?') && actions.clearGoal()}>Borrar</button>
         </div>
       )}
+    </div>
+  );
+}
+
+
+// Día del calendario: ✕ rojo si no se cumplió, ■ verde si sí, ◪ amarillo si fue parcial.
+function CalDay({ date, status }) {
+  const glyph = status === 'done' ? '■' : status === 'missed' ? '✕' : status === 'partial' ? '◪' : '';
+  return (
+    <div className={'cal-day ' + status}>
+      <span className="cal-num">{date.getDate()}</span>
+      {glyph && <span className="cal-glyph">{glyph}</span>}
     </div>
   );
 }
@@ -211,19 +224,17 @@ export default function Board({ users, habits, habitLogs, bonusLogs, workouts, r
           ))}
           {cells.map((d, i) =>
             d ? (
-              <div key={i} className={'cal-day ' + dayAggregateStatus(habits, d, currentUser.id, monthLogs, trackingStartDate)}>
-                {d.getDate()}
-              </div>
+              <CalDay key={i} date={d} status={dayAggregateStatus(habits, d, currentUser.id, monthLogs, trackingStartDate)} />
             ) : (
               <div key={i} className="cal-day blank" />
             )
           )}
         </div>
         <div className="cal-legend">
-          <span><i style={{ background: 'var(--green-soft)' }} />Todos los hábitos</span>
-          <span><i style={{ background: 'var(--amber-soft)' }} />Algunos</span>
-          <span><i style={{ background: 'var(--coral-soft)' }} />Ninguno</span>
-          <span><i style={{ border: '1px dashed var(--line)' }} />Sin hábito ese día</span>
+          <span><i className="lg-done">■</i>Todos</span>
+          <span><i className="lg-partial">◪</i>Algunos</span>
+          <span><i className="lg-missed">✕</i>Ninguno</span>
+          <span><i className="lg-none">·</i>Sin hábito</span>
         </div>
       </div>
 

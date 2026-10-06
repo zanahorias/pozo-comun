@@ -5,6 +5,7 @@ import {
   incompleteToday, nextReminder
 } from '../lib/logic';
 import { supabase } from '../lib/supabase';
+import { habitDays } from '../lib/commitments';
 import '../theme-q4.css';
 
 const DEFAULT_NEW_POINTS = 5;
@@ -93,7 +94,7 @@ function WeekStrip({ habit, currentUser, habitLogs, trackingStartDate }) {
   return (
     <div className="week-strip">
       {cells.map((c, i) => (
-        <div className={'week-dot ' + c.s} key={i}>{CAL_DOW_LABELS[i]}</div>
+        <div className={'week-dot ' + c.s} key={i}>{c.s === 'done' ? '■' : c.s === 'missed' ? '✕' : c.s === 'partial' ? '◪' : CAL_DOW_LABELS[i]}</div>
       ))}
     </div>
   );
@@ -243,7 +244,7 @@ function HabitEditForm({ habit, isAdmin, onSave, onCancel }) {
   );
 }
 
-export default function Habits({ habits, habitLogs, currentUser, isAdmin, actions, trackingStartDate }) {
+export default function Habits({ onEditCommitments, habits, habitLogs, currentUser, isAdmin, actions, trackingStartDate }) {
   const t = today();
   const [editingId, setEditingId] = useState(null);
   const [jokers, refreshJokers] = useJokerBalance(currentUser.id, [habitLogs]);
@@ -277,6 +278,9 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
       <div className="hmeta" style={{ marginBottom: 10 }}>
         El día cierra a las 04:00 AM · Comodines: <b>{jokers}</b>
       </div>
+      {onEditCommitments && (
+        <button className="btn btn-ghost btn-small" style={{ marginBottom: 12 }} onClick={onEditCommitments}>📅 Mis compromisos</button>
+      )}
       {habits.map((h) => {
         if (editingId === h.id) {
           return (
@@ -293,8 +297,9 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
           );
         }
 
-        const scheduledToday = h.days.includes(t.getDay());
-        const dayLabels = h.days.length === 7 ? 'Todos los días' : h.days.slice().sort().map((d) => DOW_LABELS[d]).join(' ');
+        const myDays = habitDays(h, currentUser.id, t);
+        const scheduledToday = myDays.includes(t.getDay());
+        const dayLabels = myDays.length === 7 ? 'Todos los días' : myDays.slice().sort().map((d) => DOW_LABELS[d]).join(' ');
 
         if (h.kind === 'quantity') {
           const key = dateKey(t);
@@ -302,9 +307,9 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
           const amount = entry?.amount || 0;
           const pct = Math.min(100, Math.round((amount / h.target) * 100));
           return (
-            <div className="habit-card" key={h.id}>
+            <div className={'habit-card' + (pct >= 100 ? ' is-done' : '')} key={h.id}>
               <div className="habit-row">
-                <div className="check disabled" />
+                <div className={'check disabled' + (pct >= 100 ? ' done' : '')}>{pct >= 100 ? '✓' : ''}</div>
                 <div className="habit-info">
                   <div className="hname">{h.name}{h.shared ? ' 🤝' : ''}</div>
                   <div className="hmeta">{dayLabels} · meta {h.target} {h.unit}/día</div>
@@ -341,7 +346,7 @@ export default function Habits({ habits, habitLogs, currentUser, isAdmin, action
         const jokerTarget = jokers > 0 ? findJokerTarget(h, currentUser.id, habitLogs, trackingStartDate) : null;
         const todayEntry = habitLogs.find((e) => e.habit_id === h.id && e.user_id === currentUser.id && e.log_date === dateKey(t));
         return (
-          <div className="habit-card" key={h.id}>
+          <div className={'habit-card' + (done ? ' is-done' : '')} key={h.id}>
             <div className="habit-row">
               <div
                 className={'check ' + (done ? 'done ' : '') + (scheduledToday ? '' : 'disabled')}

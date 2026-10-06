@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
-import { fmtShort } from '../lib/dates';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { dateKey, fmtShort, today, DOW_LABELS } from '../lib/dates';
 import { supabase } from '../lib/supabase';
-import ExerciseIcon from './ExerciseIcon';
+import { trainDaysOf } from '../lib/commitments';
+import ExerciseImage from './ExerciseImage';
 import TimerTool from './TimerTool';
 import '../theme-q4.css';
 
-// ---------------------------------------------------------------------------
-// BASE DE RUTINAS
-// ---------------------------------------------------------------------------
-const x = (name, spec) => ({ name, spec });
+// Puntos por entrenar (se guardan como bonus_logs: ex_<ejercicio> y routine_complete).
+export const EXERCISE_POINTS = 3;
+export const ROUTINE_BONUS = 15;
+
+const x = (name, spec, en = '') => ({ name, spec, en });
 
 const ANKLE_BLOCK = [
   x('Alfabeto con el pie', '2x1'),
@@ -18,31 +20,31 @@ const ANKLE_BLOCK = [
 
 const ROUTINES = {
   cristi: {
-    note: 'Mancuernas + peso corporal · cero impacto en rodillas · cerrá con 15-20 min de cardio suave.',
+    note: 'Mancuernas + peso corporal · sin banco · cero impacto en rodillas · cerrá con 15-20 min de cardio suave.',
     cardio: true,
     pre: [],
     freq: {
       2: [
-        { title: 'Día 1 · Full Body 1', ex: [x('Puente de glúteo en suelo', '3x15-20'), x('Press de hombros sentada', '3x12-15'), x('Peso muerto rumano con mancuernas', '3x12-15'), x('Remo apoyada en banco', '3x12-15'), x('Plancha de antebrazos', '3x30-45s')] },
-        { title: 'Día 2 · Full Body 2', ex: [x('Hip Thrust en banco', '3x12-15'), x('Press de pecho suelo/banco', '3x12-15'), x('Good Mornings / PM sumo', '3x12-15'), x('Vuelos laterales / Remo al mentón', '3x15'), x('Deadbug', '3x12/lado')] }
+        { title: 'Full Body 1', ex: [x('Puente de glúteo en suelo', '3x15-20', 'glute bridge'), x('Press de hombros de pie', '3x12-15', 'dumbbell shoulder press'), x('Peso muerto rumano con mancuernas', '3x12-15', 'romanian deadlift dumbbell'), x('Remo inclinada con mancuernas', '3x12-15', 'bent over dumbbell row'), x('Plancha de antebrazos', '3x30-45s', 'plank')] },
+        { title: 'Full Body 2', ex: [x('Puente de glúteo con mancuerna', '3x12-15', 'barbell glute bridge'), x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Good Mornings / PM sumo', '3x12-15', 'good morning'), x('Vuelos laterales', '3x15', 'side lateral raise'), x('Deadbug', '3x12/lado', 'dead bug')] }
       ],
       3: [
-        { title: 'Día 1 · Full Body A', ex: [x('Hip Thrust', '4x12-15'), x('Remo 1 mano en banco', '3x12/lado'), x('Peso muerto rumano', '3x15'), x('Elevaciones laterales', '3x15-20')] },
-        { title: 'Día 2 · Full Body B', ex: [x('Press inclinado/plano', '3x12-15'), x('Abducción de cadera / Patada de glúteo', '3x15-20'), x('Press militar sentada', '3x12-15'), x('Pájaros (deltoides posterior)', '3x15')] },
-        { title: 'Día 3 · Full Body C', ex: [x('Puente de glúteo 1 pierna', '3x12/lado'), x('Remo abierto', '3x12-15'), x('PM sumo ligero', '3x15'), x('Curl de bíceps + Extensión de tríceps', '3x15'), x('Pallof press / Plancha lateral', '3x30s/lado')] }
+        { title: 'Full Body A', ex: [x('Puente de glúteo con mancuerna', '4x12-15', 'barbell glute bridge'), x('Remo 1 mano inclinada', '3x12/lado', 'one arm dumbbell row'), x('Peso muerto rumano', '3x15', 'romanian deadlift dumbbell'), x('Elevaciones laterales', '3x15-20', 'side lateral raise')] },
+        { title: 'Full Body B', ex: [x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Patada de glúteo en cuadrupedia', '3x15-20', 'kickback'), x('Abducción de cadera acostada', '3x15-20', 'side leg raise'), x('Press militar de pie', '3x12-15', 'dumbbell shoulder press'), x('Pájaros inclinada', '3x15', 'reverse flyes')] },
+        { title: 'Full Body C', ex: [x('Puente de glúteo 1 pierna', '3x12/lado', 'single leg glute bridge'), x('Remo abierto con mancuernas', '3x12-15', 'bent over dumbbell row'), x('PM sumo ligero', '3x15', 'good morning'), x('Curl de bíceps + Extensión de tríceps', '3x15', 'dumbbell bicep curl'), x('Plancha lateral', '3x30s/lado', 'side bridge')] }
       ],
       4: [
-        { title: 'Torso A', ex: [x('Press de pecho en banco', '3x12-15'), x('Remo apoyada en banco', '3x12-15'), x('Press de hombros sentada', '3x12-15'), x('Curl de bíceps + Extensión de tríceps', '3x15'), x('Plancha de antebrazos', '3x30-45s')] },
-        { title: 'Pierna A (bajo impacto)', ex: [x('Hip Thrust en banco', '4x12-15'), x('Peso muerto rumano con mancuernas', '3x12-15'), x('Puente de glúteo 1 pierna', '3x12/lado'), x('Abducción de cadera', '3x15-20'), x('Gemelos de pie con mancuernas', '3x15-20')] },
-        { title: 'Torso B', ex: [x('Press inclinado', '3x12-15'), x('Remo 1 mano en banco', '3x12/lado'), x('Elevaciones laterales', '3x15-20'), x('Pájaros (deltoides posterior)', '3x15'), x('Deadbug', '3x12/lado')] },
-        { title: 'Pierna B (bajo impacto)', ex: [x('Puente de glúteo en suelo', '3x15-20'), x('Good Mornings / PM sumo', '3x12-15'), x('Patada de glúteo', '3x15-20'), x('Hip Thrust en banco', '3x12-15'), x('Plancha lateral', '3x30s/lado')] }
+        { title: 'Torso A', ex: [x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Remo inclinada con mancuernas', '3x12-15', 'bent over dumbbell row'), x('Press de hombros de pie', '3x12-15', 'dumbbell shoulder press'), x('Curl de bíceps + Extensión de tríceps', '3x15', 'dumbbell bicep curl'), x('Plancha de antebrazos', '3x30-45s', 'plank')] },
+        { title: 'Pierna A (bajo impacto)', ex: [x('Puente de glúteo con mancuerna', '4x12-15', 'barbell glute bridge'), x('Peso muerto rumano con mancuernas', '3x12-15', 'romanian deadlift dumbbell'), x('Puente de glúteo 1 pierna', '3x12/lado', 'single leg glute bridge'), x('Abducción de cadera acostada', '3x15-20', 'side leg raise'), x('Gemelos de pie con mancuernas', '3x15-20', 'standing dumbbell calf raise')] },
+        { title: 'Torso B', ex: [x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Remo 1 mano inclinada', '3x12/lado', 'one arm dumbbell row'), x('Elevaciones laterales', '3x15-20', 'side lateral raise'), x('Pájaros inclinada', '3x15', 'reverse flyes'), x('Deadbug', '3x12/lado', 'dead bug')] },
+        { title: 'Pierna B (bajo impacto)', ex: [x('Puente de glúteo en suelo', '3x15-20', 'glute bridge'), x('Good Mornings / PM sumo', '3x12-15', 'good morning'), x('Patada de glúteo en cuadrupedia', '3x15-20', 'kickback'), x('Puente de glúteo con mancuerna', '3x12-15', 'barbell glute bridge'), x('Plancha lateral', '3x30s/lado', 'side bridge')] }
       ],
       5: [
-        { title: 'Día 1 · Glúteo + Core', ex: [x('Hip Thrust en banco', '3x12-15'), x('Puente de glúteo 1 pierna', '2x12/lado'), x('Patada de glúteo', '2x15-20'), x('Deadbug', '2x12/lado')] },
-        { title: 'Día 2 · Empuje', ex: [x('Press de pecho en banco', '3x12-15'), x('Press de hombros sentada', '3x12-15'), x('Elevaciones laterales', '2x15-20'), x('Extensión de tríceps', '2x15')] },
-        { title: 'Día 3 · Posterior', ex: [x('Peso muerto rumano con mancuernas', '3x12-15'), x('Good Mornings / PM sumo', '2x12-15'), x('Abducción de cadera', '2x15-20'), x('Plancha lateral', '2x30s/lado')] },
-        { title: 'Día 4 · Tracción', ex: [x('Remo apoyada en banco', '3x12-15'), x('Remo 1 mano en banco', '2x12/lado'), x('Pájaros (deltoides posterior)', '2x15'), x('Curl de bíceps', '2x15')] },
-        { title: 'Día 5 · Full Body suave', ex: [x('Puente de glúteo en suelo', '2x15-20'), x('Press inclinado', '2x12-15'), x('Remo abierto', '2x12-15'), x('Pallof press', '2x30s/lado')] }
+        { title: 'Glúteo + Core', ex: [x('Puente de glúteo con mancuerna', '3x12-15', 'barbell glute bridge'), x('Puente de glúteo 1 pierna', '2x12/lado', 'single leg glute bridge'), x('Patada de glúteo en cuadrupedia', '2x15-20', 'kickback'), x('Deadbug', '2x12/lado', 'dead bug')] },
+        { title: 'Empuje', ex: [x('Press de pecho en suelo', '3x12-15', 'dumbbell floor press'), x('Press de hombros de pie', '3x12-15', 'dumbbell shoulder press'), x('Elevaciones laterales', '2x15-20', 'side lateral raise'), x('Extensión de tríceps', '2x15', 'dumbbell triceps extension')] },
+        { title: 'Posterior', ex: [x('Peso muerto rumano con mancuernas', '3x12-15', 'romanian deadlift dumbbell'), x('Good Mornings / PM sumo', '2x12-15', 'good morning'), x('Abducción de cadera acostada', '2x15-20', 'side leg raise'), x('Plancha lateral', '2x30s/lado', 'side bridge')] },
+        { title: 'Tracción', ex: [x('Remo inclinada con mancuernas', '3x12-15', 'bent over dumbbell row'), x('Remo 1 mano inclinada', '2x12/lado', 'one arm dumbbell row'), x('Pájaros inclinada', '2x15', 'reverse flyes'), x('Curl de bíceps', '2x15', 'dumbbell bicep curl')] },
+        { title: 'Full Body suave', ex: [x('Puente de glúteo en suelo', '2x15-20', 'glute bridge'), x('Press de pecho en suelo', '2x12-15', 'dumbbell floor press'), x('Remo abierto con mancuernas', '2x12-15', 'bent over dumbbell row'), x('Plancha de antebrazos', '2x30s', 'plank')] }
       ]
     }
   },
@@ -52,26 +54,26 @@ const ROUTINES = {
     pre: ANKLE_BLOCK,
     freq: {
       2: [
-        { title: 'Día 1 · Full Body + Potencia', ex: [x('Salto vertical desde banco', '3x5'), x('Press de banca con barra', '3x12-15'), x('PM rumano con barra', '3x12-15'), x('Remo con barra/mancuernas', '3x12-15'), x('Gemelos 1 pierna con mancuerna', '3x15-20')] },
-        { title: 'Día 2 · Full Body + Agilidad', ex: [x('Saltos laterales', '3x8/lado'), x('Press inclinado con mancuernas', '3x12-15'), x('Zancada atrás con mancuernas', '3x12/pierna'), x('Press militar barra/mancuernas', '3x12-15'), x('Farmer Walk', '3x40m')] }
+        { title: 'Full Body + Potencia', ex: [x('Salto vertical desde banco', '3x5', 'box jump'), x('Press de banca con barra', '3x12-15', 'barbell bench press'), x('PM rumano con barra', '3x12-15', 'romanian deadlift'), x('Remo con barra/mancuernas', '3x12-15', 'bent over barbell row'), x('Gemelos 1 pierna con mancuerna', '3x15-20', 'standing dumbbell calf raise')] },
+        { title: 'Full Body + Agilidad', ex: [x('Saltos laterales', '3x8/lado', 'lateral bound'), x('Press inclinado con mancuernas', '3x12-15', 'incline dumbbell press'), x('Zancada atrás con mancuernas', '3x12/pierna', 'dumbbell rear lunge'), x('Press militar barra/mancuernas', '3x12-15', 'barbell shoulder press'), x('Farmer Walk', '3x40m', 'farmers walk')] }
       ],
       3: [
-        { title: 'Push', ex: [x('Broad Jump / Salto al cajón', '3x5'), x('Press de banca con barra', '4x12-15'), x('Press inclinado con mancuernas', '3x12-15'), x('Press militar', '3x12-15'), x('Extensión de tríceps', '3x15-20')] },
-        { title: 'Pull', ex: [x('Remo Pendlay / con barra', '4x12-15'), x('Remo 1 mano', '3x12-15'), x('Pájaros', '3x15-20'), x('Curl de bíceps', '3x12-15'), x('Farmer Walk 1 mano', '3x30s/lado')] },
-        { title: 'Legs', ex: [x('Pliometría escalera / saltos al frente', '3x6'), x('Sentadilla con barra / Goblet', '4x12-15'), x('PM rumano con barra', '3x12-15'), x('Zancadas búlgaras', '3x12/pierna'), x('Gemelos en banco', '4x15-20')] }
+        { title: 'Push', ex: [x('Broad Jump / Salto al cajón', '3x5', 'box jump'), x('Press de banca con barra', '4x12-15', 'barbell bench press'), x('Press inclinado con mancuernas', '3x12-15', 'incline dumbbell press'), x('Press militar', '3x12-15', 'barbell shoulder press'), x('Extensión de tríceps', '3x15-20', 'triceps extension')] },
+        { title: 'Pull', ex: [x('Remo Pendlay / con barra', '4x12-15', 'bent over barbell row'), x('Remo 1 mano', '3x12-15', 'one arm dumbbell row'), x('Pájaros', '3x15-20', 'reverse flyes'), x('Curl de bíceps', '3x12-15', 'barbell curl'), x('Farmer Walk 1 mano', '3x30s/lado', 'farmers walk')] },
+        { title: 'Legs', ex: [x('Pliometría escalera / saltos al frente', '3x6', 'box jump'), x('Sentadilla con barra / Goblet', '4x12-15', 'barbell squat'), x('PM rumano con barra', '3x12-15', 'romanian deadlift'), x('Zancadas búlgaras', '3x12/pierna', 'split squat'), x('Gemelos en banco', '4x15-20', 'standing calf raise')] }
       ],
       4: [
-        { title: 'Torso Pesado', ex: [x('Press de banca con barra', '4x10-12'), x('Remo con barra', '4x10-12'), x('Press militar con barra', '3x12'), x('Remo 1 mano', '3x12-15'), x('Extensión de tríceps', '3x15')] },
-        { title: 'Pierna + Potencia', ex: [x('Salto vertical desde banco', '3x5'), x('Sentadilla con barra', '4x12-15'), x('PM rumano con barra', '3x12-15'), x('Zancada atrás con mancuernas', '3x12/pierna'), x('Gemelos 1 pierna con mancuerna', '3x15-20')] },
-        { title: 'Torso Hipertrofia', ex: [x('Press inclinado con mancuernas', '4x12-15'), x('Remo con mancuernas', '3x15'), x('Elevaciones laterales', '3x15-20'), x('Curl de bíceps', '3x15'), x('Extensión de tríceps', '3x15-20')] },
-        { title: 'Pierna + Agilidad', ex: [x('Saltos laterales', '3x8/lado'), x('Zancadas búlgaras', '3x12/pierna'), x('Hip Thrust con barra', '3x12-15'), x('Pliometría escalera', '3x6'), x('Gemelos en banco', '4x15-20')] }
+        { title: 'Torso Pesado', ex: [x('Press de banca con barra', '4x10-12', 'barbell bench press'), x('Remo con barra', '4x10-12', 'bent over barbell row'), x('Press militar con barra', '3x12', 'barbell shoulder press'), x('Remo 1 mano', '3x12-15', 'one arm dumbbell row'), x('Extensión de tríceps', '3x15', 'triceps extension')] },
+        { title: 'Pierna + Potencia', ex: [x('Salto vertical desde banco', '3x5', 'box jump'), x('Sentadilla con barra', '4x12-15', 'barbell squat'), x('PM rumano con barra', '3x12-15', 'romanian deadlift'), x('Zancada atrás con mancuernas', '3x12/pierna', 'dumbbell rear lunge'), x('Gemelos 1 pierna con mancuerna', '3x15-20', 'standing dumbbell calf raise')] },
+        { title: 'Torso Hipertrofia', ex: [x('Press inclinado con mancuernas', '4x12-15', 'incline dumbbell press'), x('Remo con mancuernas', '3x15', 'bent over dumbbell row'), x('Elevaciones laterales', '3x15-20', 'side lateral raise'), x('Curl de bíceps', '3x15', 'dumbbell bicep curl'), x('Extensión de tríceps', '3x15-20', 'triceps extension')] },
+        { title: 'Pierna + Agilidad', ex: [x('Saltos laterales', '3x8/lado', 'lateral bound'), x('Zancadas búlgaras', '3x12/pierna', 'split squat'), x('Hip Thrust con barra', '3x12-15', 'barbell hip thrust'), x('Pliometría escalera', '3x6', 'box jump'), x('Gemelos en banco', '4x15-20', 'standing calf raise')] }
       ],
       5: [
-        { title: 'Pecho + Salto', ex: [x('Broad Jump', '3x5'), x('Press de banca con barra', '4x12-15'), x('Press inclinado con mancuernas', '3x12-15'), x('Aperturas con mancuernas', '3x15'), x('Extensión de tríceps', '3x15-20')] },
-        { title: 'Espalda + Tobillo', ex: [x('Remo Pendlay / con barra', '4x12-15'), x('Remo 1 mano', '3x12-15'), x('Pájaros', '3x15-20'), x('Curl de bíceps', '3x12-15'), x('Gemelos 1 pierna con mancuerna', '3x15-20'), x('Caminata en talones', '3x20m')] },
-        { title: 'Piernas + Pliometría', ex: [x('Pliometría escalera', '3x6'), x('Sentadilla con barra / Goblet', '4x12-15'), x('PM rumano con barra', '3x12-15'), x('Zancadas búlgaras', '3x12/pierna'), x('Gemelos en banco', '4x15-20')] },
-        { title: 'Hombros + Core', ex: [x('Press militar con barra', '4x12-15'), x('Elevaciones laterales', '4x15-20'), x('Pájaros', '3x15-20'), x('Plancha / Pallof press', '3x40s'), x('Farmer Walk', '3x40m')] },
-        { title: 'Brazos + Transferencia', ex: [x('Curl de bíceps con barra', '3x12-15'), x('Extensión de tríceps', '3x12-15'), x('Curl martillo', '3x15'), x('Saltos laterales', '3x8/lado'), x('Farmer Walk 1 mano', '3x30s/lado')] }
+        { title: 'Pecho + Salto', ex: [x('Broad Jump', '3x5', 'box jump'), x('Press de banca con barra', '4x12-15', 'barbell bench press'), x('Press inclinado con mancuernas', '3x12-15', 'incline dumbbell press'), x('Aperturas con mancuernas', '3x15', 'dumbbell flyes'), x('Extensión de tríceps', '3x15-20', 'triceps extension')] },
+        { title: 'Espalda + Tobillo', ex: [x('Remo Pendlay / con barra', '4x12-15', 'bent over barbell row'), x('Remo 1 mano', '3x12-15', 'one arm dumbbell row'), x('Pájaros', '3x15-20', 'reverse flyes'), x('Curl de bíceps', '3x12-15', 'barbell curl'), x('Gemelos 1 pierna con mancuerna', '3x15-20', 'standing dumbbell calf raise'), x('Caminata en talones', '3x20m', '')] },
+        { title: 'Piernas + Pliometría', ex: [x('Pliometría escalera', '3x6', 'box jump'), x('Sentadilla con barra / Goblet', '4x12-15', 'barbell squat'), x('PM rumano con barra', '3x12-15', 'romanian deadlift'), x('Zancadas búlgaras', '3x12/pierna', 'split squat'), x('Gemelos en banco', '4x15-20', 'standing calf raise')] },
+        { title: 'Hombros + Core', ex: [x('Press militar con barra', '4x12-15', 'barbell shoulder press'), x('Elevaciones laterales', '4x15-20', 'side lateral raise'), x('Pájaros', '3x15-20', 'reverse flyes'), x('Plancha / Pallof press', '3x40s', 'plank'), x('Farmer Walk', '3x40m', 'farmers walk')] },
+        { title: 'Brazos + Transferencia', ex: [x('Curl de bíceps con barra', '3x12-15', 'barbell curl'), x('Extensión de tríceps', '3x12-15', 'triceps extension'), x('Curl martillo', '3x15', 'hammer curl'), x('Saltos laterales', '3x8/lado', 'lateral bound'), x('Farmer Walk 1 mano', '3x30s/lado', 'farmers walk')] }
       ]
     }
   }
@@ -81,6 +83,7 @@ const ROUTINES = {
 // Helpers
 // ---------------------------------------------------------------------------
 const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const slug = (s) => norm(s).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
 
 function profileOf(user) {
   const n = norm(user?.name);
@@ -90,33 +93,38 @@ function profileOf(user) {
 }
 
 function parseSpec(spec) {
-  const [sets, rest] = spec.split('x');
+  const [sets, rest = '10'] = spec.split('x');
   const n = parseInt(rest, 10) || 10;
   const unit = /\d\s*s(\/|$)/.test(rest) ? 'seg' : /\dm$/.test(rest) ? 'm' : 'reps';
-  return { sets: parseInt(sets, 10) || 3, label: rest, n, unit };
+  return { sets: parseInt(sets, 10) || 3, reps: rest, label: rest, n, unit };
 }
 
-function iconFor(name) {
-  const n = norm(name);
-  if (/zancada|bulgara|patada/.test(n)) return 'Zancadas';
-  if (/sentadilla|goblet|hip thrust|puente|salto|pliometria|gemelos|abduccion/.test(n)) return 'Sentadilla';
-  if (/press de banca|press de pecho|press inclinado|aperturas/.test(n)) return 'Press de banca';
-  if (/militar|press de hombros/.test(n)) return 'Press militar';
-  if (/remo|pendlay/.test(n)) return 'Remo con barra';
-  if (/curl/.test(n)) return 'Curl de bíceps';
-  if (/triceps/.test(n)) return 'Extensión de tríceps';
-  if (/elevacion|vuelos|pajaros/.test(n)) return 'Elevación lateral';
-  if (/peso muerto|pm |good morning/.test(n)) return 'Peso muerto';
-  return 'default';
+const userName = (users, uid) => users.find((u) => u.id === uid)?.name || uid;
+
+// Inicio del "día" actual (corte 04:00) como ISO.
+const dayStartIso = () => {
+  const t = today();
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate(), 4, 0, 0).toISOString();
+};
+
+// Rutinas editables por usuario (se guardan en este dispositivo).
+function useRoutineStore(uid) {
+  const key = 'arriba-routine-' + uid;
+  const read = () => { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) { return {}; } };
+  const [custom, setCustom] = useState(read);
+  useEffect(() => { setCustom(read()); /* eslint-disable-next-line */ }, [uid]);
+  const persist = (next) => { setCustom(next); try { localStorage.setItem(key, JSON.stringify(next)); } catch (e) { /* ignore */ } };
+  return {
+    get: (profile, freq, fallback) => custom[profile + freq] || fallback,
+    set: (profile, freq, days) => persist({ ...custom, [profile + freq]: days }),
+    reset: (profile, freq) => { const n = { ...custom }; delete n[profile + freq]; persist(n); },
+    isCustom: (profile, freq) => !!custom[profile + freq]
+  };
 }
 
-function userName(users, uid) {
-  return users.find((u) => u.id === uid)?.name || uid;
-}
-
-// Última sesión por ejercicio del usuario: { [exercise_name]: sets[] }
-function useLastSessions(userId, workouts) {
-  const [last, setLast] = useState({});
+// Historial de fuerza del usuario: última sesión por ejercicio + todo para los gráficos.
+function useHistory(userId, workouts) {
+  const [state, setState] = useState({ last: {}, history: [] });
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -126,23 +134,42 @@ function useLastSessions(userId, workouts) {
         .eq('user_id', userId)
         .eq('type', 'strength')
         .order('created_at', { ascending: false })
-        .limit(500);
+        .limit(800);
       if (error || cancelled) return;
-      const map = {};
+      const last = {};
       (data || []).forEach((w) => {
-        if (w.exercise_name && !map[w.exercise_name] && Array.isArray(w.sets) && w.sets.length) map[w.exercise_name] = w.sets;
+        if (w.exercise_name && !last[w.exercise_name] && Array.isArray(w.sets) && w.sets.length) last[w.exercise_name] = w.sets;
       });
-      setLast(map);
+      setState({ last, history: data || [] });
     })();
     return () => { cancelled = true; };
   }, [userId, workouts]);
-  return last;
+  return state;
+}
+
+// Ejercicios ya completados en el día en curso.
+function useDoneToday(userId) {
+  const [done, setDone] = useState({});
+  const refresh = useCallback(async () => {
+    const { data } = await supabase
+      .from('workouts')
+      .select('exercise_name,sets')
+      .eq('user_id', userId)
+      .eq('type', 'strength')
+      .gte('created_at', dayStartIso());
+    const m = {};
+    (data || []).forEach((w) => { m[w.exercise_name] = w.sets; });
+    setDone(m);
+    return m;
+  }, [userId]);
+  useEffect(() => { refresh(); }, [refresh]);
+  return [done, setDone, refresh];
 }
 
 // ---------------------------------------------------------------------------
-// Tarjeta de ejercicio de la rutina
+// Tarjeta de ejercicio (se achica al completarlo)
 // ---------------------------------------------------------------------------
-function RoutineExercise({ ex, lastSets, onSave }) {
+function RoutineExercise({ ex, uid, lastSets, doneSets, onComplete }) {
   const spec = parseSpec(ex.spec);
   const build = () =>
     Array.from({ length: spec.sets }, (_, i) => {
@@ -150,29 +177,46 @@ function RoutineExercise({ ex, lastSets, onSave }) {
       return { reps: prev ? prev.reps : spec.n, weight: prev ? prev.weight : 0 };
     });
   const [rows, setRows] = useState(build);
-  const [saved, setSaved] = useState(false);
+  const [reopened, setReopened] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Cuando llega la sesión anterior, precargar peso/reps.
-  useEffect(() => { setRows(build()); setSaved(false); /* eslint-disable-next-line */ }, [lastSets, ex.name]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setRows(build()); }, [lastSets, ex.spec, ex.name]);
 
-  const upd = (i, k, v) => { setSaved(false); setRows((r) => r.map((row, idx) => (idx === i ? { ...row, [k]: v } : row))); };
+  const upd = (i, k, v) => setRows((r) => r.map((row, idx) => (idx === i ? { ...row, [k]: v } : row)));
+  const finished = !!doneSets && !reopened;
 
-  async function save() {
+  async function complete() {
     const sets = rows.map((r) => ({ reps: Number(r.reps) || 0, weight: Number(r.weight) || 0 })).filter((r) => r.reps > 0);
-    if (!sets.length) return;
-    await onSave(ex.name, sets);
-    setSaved(true);
+    if (!sets.length || saving) return;
+    setSaving(true);
+    await onComplete(ex, sets);
+    setSaving(false);
+    setReopened(false);
+  }
+
+  if (finished) {
+    return (
+      <div className="ex-collapsed">
+        <span className="ex-check">✓</span>
+        <div className="ex-collapsed-name">
+          {ex.name}
+          <small>{doneSets.map((s) => `${s.reps}×${s.weight}kg`).join(' · ')}</small>
+        </div>
+        <button className="btn btn-ghost btn-small" onClick={() => setReopened(true)}>Ver</button>
+      </div>
+    );
   }
 
   return (
-    <div className={'log-card routine-ex' + (saved ? ' is-saved' : '')}>
+    <div className="log-card routine-ex">
       <div className="routine-head">
-        <ExerciseIcon name={iconFor(ex.name)} />
+        <ExerciseImage name={ex.name} en={ex.en} uid={uid} />
         <div style={{ flex: 1 }}>
           <div className="lname">{ex.name}</div>
-          <div className="hmeta">Objetivo: {spec.sets} × {spec.label}{lastSets ? ' · cargado de la sesión anterior' : ''}</div>
+          <div className="hmeta">Objetivo: {spec.sets} × {spec.label}{lastSets ? ' · cargado de la vez anterior' : ''}</div>
+          <div className="hmeta">Tocá la foto para ver el movimiento</div>
         </div>
-        {saved && <span className="status-tag st-done">Completado</span>}
       </div>
       {rows.map((r, i) => (
         <div className="set-edit" key={i}>
@@ -183,7 +227,124 @@ function RoutineExercise({ ex, lastSets, onSave }) {
           <span className="u">kg</span>
         </div>
       ))}
-      <button className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} onClick={save}>Guardar ejercicio</button>
+      <button className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={saving} onClick={complete}>
+        {saving ? 'Guardando…' : `Ejercicio completado  (+${EXERCISE_POINTS} pts)`}
+      </button>
+    </div>
+  );
+}
+
+// Edición de un ejercicio de la rutina (nombre, series, reps, orden, foto).
+function EditRow({ ex, uid, index, total, onChange, onMove, onRemove }) {
+  const spec = parseSpec(ex.spec);
+  const set = (patch) => {
+    const sets = patch.sets ?? spec.sets;
+    const reps = patch.reps ?? spec.reps;
+    onChange({ ...ex, ...(patch.name !== undefined ? { name: patch.name } : {}), spec: `${sets}x${reps}` });
+  };
+  return (
+    <div className="log-card edit-ex">
+      <div className="routine-head">
+        <ExerciseImage name={ex.name} en={ex.en} uid={uid} editable />
+        <input className="edit-name" value={ex.name} onChange={(e) => set({ name: e.target.value })} />
+      </div>
+      <div className="field-row cols-2">
+        <div><label className="flabel">Series</label><input type="number" min="1" max="10" value={spec.sets} onChange={(e) => set({ sets: Number(e.target.value) || 1 })} /></div>
+        <div><label className="flabel">Reps / tiempo</label><input value={spec.reps} onChange={(e) => set({ reps: e.target.value })} placeholder="12-15, 30s, 8/lado" /></div>
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button className="btn btn-ghost btn-small" disabled={index === 0} onClick={() => onMove(-1)}>↑</button>
+        <button className="btn btn-ghost btn-small" disabled={index === total - 1} onClick={() => onMove(1)}>↓</button>
+        <button className="btn btn-ghost btn-small" style={{ marginLeft: 'auto', color: 'var(--coral)', borderColor: 'var(--coral)' }} onClick={onRemove}>Quitar</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Gráficos de progreso semanal
+// ---------------------------------------------------------------------------
+function Chart({ data, labels, color, kind, unit }) {
+  const W = 320, H = 130, P = { l: 30, r: 10, t: 14, b: 22 };
+  const vals = data.filter((v) => v !== null);
+  const max = Math.max(1, ...vals);
+  const iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const step = iw / data.length;
+  const px = (i) => P.l + step * i + step / 2;
+  const py = (v) => P.t + ih - (v / max) * ih;
+  const pts = data.map((v, i) => (v === null ? null : [px(i), py(v)])).filter(Boolean);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="chart-svg" role="img">
+      {[0, 0.5, 1].map((f) => (
+        <g key={f}>
+          <line x1={P.l} x2={W - P.r} y1={P.t + ih - f * ih} y2={P.t + ih - f * ih} stroke="var(--line)" strokeDasharray="3 4" />
+          <text x={P.l - 5} y={P.t + ih - f * ih + 3} textAnchor="end" fontSize="9" fill="var(--muted)">{Math.round(max * f)}</text>
+        </g>
+      ))}
+      {kind === 'bar' && data.map((v, i) => v !== null && (
+        <rect key={i} x={px(i) - step * 0.28} y={py(v)} width={step * 0.56} height={P.t + ih - py(v)} rx="4" fill={color} />
+      ))}
+      {kind === 'line' && pts.length > 1 && <polyline points={pts.map((p) => p.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" />}
+      {kind === 'line' && data.map((v, i) => v !== null && <circle key={i} cx={px(i)} cy={py(v)} r="4" fill={color} />)}
+      {data.map((v, i) => v !== null && (
+        <text key={'v' + i} x={px(i)} y={py(v) - 7} textAnchor="middle" fontSize="9" fontWeight="700" fill="var(--ink)">{Math.round(v * 10) / 10}</text>
+      ))}
+      {labels.map((l, i) => <text key={'l' + i} x={px(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="var(--muted)">{l}</text>)}
+      <text x={W - P.r} y={10} textAnchor="end" fontSize="9" fill="var(--muted)">{unit}</text>
+    </svg>
+  );
+}
+
+function Progress({ history }) {
+  const names = useMemo(() => {
+    const c = {};
+    history.forEach((w) => { c[w.exercise_name] = (c[w.exercise_name] || 0) + 1; });
+    return Object.keys(c).sort((a, b) => c[b] - c[a]);
+  }, [history]);
+  const [sel, setSel] = useState('');
+  const name = sel && names.includes(sel) ? sel : names[0];
+
+  if (!names.length) return <div className="empty">Completá ejercicios de tu rutina y acá vas a ver tu avance semanal.</div>;
+
+  const monday = (d) => { const m = new Date(d); m.setHours(0, 0, 0, 0); m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); return m; };
+  const thisMon = monday(new Date());
+  const weeks = Array.from({ length: 8 }, (_, i) => { const d = new Date(thisMon); d.setDate(d.getDate() - 7 * (7 - i)); return d; });
+  const agg = weeks.map(() => ({ maxW: null, reps: null }));
+  history.filter((w) => w.exercise_name === name).forEach((w) => {
+    const m = monday(new Date(w.created_at)).getTime();
+    const i = weeks.findIndex((d) => d.getTime() === m);
+    if (i < 0) return;
+    (w.sets || []).forEach((s) => {
+      agg[i].maxW = Math.max(agg[i].maxW ?? 0, s.weight || 0);
+      agg[i].reps = (agg[i].reps ?? 0) + (s.reps || 0);
+    });
+  });
+  const labels = weeks.map((d) => `${d.getDate()}/${d.getMonth() + 1}`);
+  const w = agg.map((a) => a.maxW);
+  const lastTwo = w.filter((v) => v !== null).slice(-2);
+  const delta = lastTwo.length === 2 ? lastTwo[1] - lastTwo[0] : null;
+
+  return (
+    <div>
+      <div className="field-row">
+        <label className="flabel">Ejercicio</label>
+        <select value={name} onChange={(e) => setSel(e.target.value)}>
+          {names.map((n) => <option key={n}>{n}</option>)}
+        </select>
+      </div>
+      {delta !== null && (
+        <div className={'progress-chip ' + (delta >= 0 ? 'up' : 'down')}>
+          {delta > 0 ? '▲' : delta < 0 ? '▼' : '='} {Math.abs(delta)} kg vs. la semana anterior
+        </div>
+      )}
+      <div className="log-card">
+        <div className="lname">Peso máximo por semana</div>
+        <Chart data={w} labels={labels} color="var(--court)" kind="line" unit="kg" />
+      </div>
+      <div className="log-card">
+        <div className="lname">Repeticiones totales por semana</div>
+        <Chart data={agg.map((a) => a.reps)} labels={labels} color="var(--amber)" kind="bar" unit="reps" />
+      </div>
     </div>
   );
 }
@@ -191,68 +352,87 @@ function RoutineExercise({ ex, lastSets, onSave }) {
 // ---------------------------------------------------------------------------
 // Pantalla
 // ---------------------------------------------------------------------------
-const FREE_EXERCISES = [
-  'Sentadilla', 'Press de banca', 'Peso muerto', 'Press militar', 'Remo con barra',
-  'Curl de bíceps', 'Extensión de tríceps', 'Zancadas', 'Jalón al pecho', 'Elevación lateral', 'Otro…'
-];
-
 export default function Training({ users, currentUser, workouts, actions }) {
+  const uid = currentUser.id;
   const [tab, setTab] = useState('routine');
   const autoProfile = profileOf(currentUser);
   const [profile, setProfile] = useState(autoProfile || 'nico');
-  const freqKey = 'training-freq-' + currentUser.id;
-  const [freq, setFreq] = useState(() => Number(localStorage.getItem(freqKey)) || 3);
+  const myDays = trainDaysOf(uid);
+  const committedFreq = myDays ? Math.min(5, Math.max(2, myDays.length)) : null;
+  const freqKey = 'training-freq-' + uid;
+  const [freq, setFreq] = useState(() => committedFreq || Number(localStorage.getItem(freqKey)) || 3);
   const [dayIdx, setDayIdx] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [toast, setToast] = useState('');
   const [cardioMin, setCardioMin] = useState(15);
   const [cardioDone, setCardioDone] = useState(false);
-
-  const [exercise, setExercise] = useState(FREE_EXERCISES[0]);
-  const [customExercise, setCustomExercise] = useState('');
-  const [reps, setReps] = useState(10);
-  const [weight, setWeight] = useState(20);
-  const [pendingSets, setPendingSets] = useState([]);
   const [runMin, setRunMin] = useState(30);
   const [runKm, setRunKm] = useState(5);
   const [historyFilter, setHistoryFilter] = useState('all');
 
-  useEffect(() => { setProfile(autoProfile || 'nico'); setDayIdx(0); }, [currentUser.id, autoProfile]);
+  const store = useRoutineStore(uid);
+  const { last, history } = useHistory(uid, workouts);
+  const [doneToday, setDoneToday, refreshDone] = useDoneToday(uid);
+
+  useEffect(() => { setProfile(autoProfile || 'nico'); }, [uid, autoProfile]);
+  useEffect(() => { if (committedFreq) setFreq(committedFreq); }, [committedFreq]);
   useEffect(() => { localStorage.setItem(freqKey, String(freq)); }, [freq, freqKey]);
 
-  const lastSessions = useLastSessions(currentUser.id, workouts);
   const routine = ROUTINES[profile];
-  const days = useMemo(() => routine.freq[freq], [routine, freq]);
+  const days = store.get(profile, freq, routine.freq[freq]);
+  // Con compromiso: cada día de la rutina se asocia a un día de la semana.
+  const weekdayFor = (i) => (myDays && myDays.length === freq ? myDays[i] : null);
+  useEffect(() => {
+    const dow = today().getDay();
+    const i = myDays && myDays.length === freq ? myDays.indexOf(dow) : -1;
+    setDayIdx(i >= 0 ? i : 0);
+    setEditing(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [freq, profile, uid]);
   const day = days[Math.min(dayIdx, days.length - 1)];
 
-  // En modo libre, precargar reps/peso de la sesión anterior del ejercicio elegido.
-  useEffect(() => {
-    const prev = lastSessions[exercise];
-    if (prev?.length) {
-      const l = prev[prev.length - 1];
-      setReps(l.reps);
-      setWeight(l.weight);
+  const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 3500); };
+
+  async function award(kind, points) {
+    const { error } = await supabase
+      .from('bonus_logs')
+      .upsert([{ user_id: uid, kind, points, log_date: dateKey(today()) }], { onConflict: 'user_id,kind,log_date', ignoreDuplicates: true });
+    if (error) console.warn('bonus', error);
+    return !error;
+  }
+
+  async function completeExercise(ex, sets, isPre = false) {
+    await actions.logGym(uid, ex.name, sets);
+    const ok = await award('ex_' + slug(ex.name), EXERCISE_POINTS);
+    const nextDone = { ...doneToday, [ex.name]: sets };
+    setDoneToday(nextDone);
+    let msg = ok ? `+${EXERCISE_POINTS} pts · ${ex.name} ✓` : `${ex.name} ✓ (no se pudieron sumar puntos)`;
+    if (!isPre && day.ex.every((e) => nextDone[e.name])) {
+      const okR = await award('routine_complete', ROUTINE_BONUS);
+      msg = okR ? `🎉 ¡Rutina completa! +${ROUTINE_BONUS} pts de bonus` : '🎉 ¡Rutina completa!';
     }
-  }, [exercise, lastSessions]);
+    flash(msg);
+    refreshDone();
+  }
+
+  // --- edición de rutina ---
+  const saveDay = (ex) => store.set(profile, freq, days.map((d, i) => (i === dayIdx ? { ...d, ex } : d)));
+  const changeEx = (i, v) => saveDay(day.ex.map((e, k) => (k === i ? v : e)));
+  const moveEx = (i, dir) => { const a = day.ex.slice(); [a[i], a[i + dir]] = [a[i + dir], a[i]]; saveDay(a); };
+  const removeEx = (i) => saveDay(day.ex.filter((_, k) => k !== i));
+  const addEx = () => saveDay([...day.ex, x('Nuevo ejercicio', '3x12', '')]);
+
+  const doneCount = day.ex.filter((e) => doneToday[e.name]).length;
 
   const filteredWorkouts = historyFilter === 'all' ? workouts : workouts.filter((w) => w.user_id === historyFilter);
-  const gymLogs = filteredWorkouts.filter((w) => w.type === 'strength');
   const runLogs = filteredWorkouts.filter((w) => w.type === 'cardio');
-
-  const addSet = () => { const r = Number(reps); if (r) setPendingSets((s) => [...s, { reps: r, weight: Number(weight) || 0 }]); };
-  const removeSet = (i) => setPendingSets((s) => s.filter((_, idx) => idx !== i));
-  async function saveGym() {
-    const name = exercise === 'Otro…' ? customExercise.trim() : exercise;
-    if (!name || !pendingSets.length) return;
-    await actions.logGym(currentUser.id, name, pendingSets);
-    setPendingSets([]);
-    setCustomExercise('');
-  }
   async function saveRun() {
     if (!Number(runMin) && !Number(runKm)) return;
-    await actions.logRun(currentUser.id, Number(runMin), Number(runKm));
+    await actions.logRun(uid, Number(runMin), Number(runKm));
   }
   async function saveCardio() {
     if (!Number(cardioMin)) return;
-    await actions.logRun(currentUser.id, Number(cardioMin), 0);
+    await actions.logRun(uid, Number(cardioMin), 0);
     setCardioDone(true);
   }
 
@@ -261,10 +441,11 @@ export default function Training({ users, currentUser, workouts, actions }) {
       <h2 className="section-title">Entrenamiento</h2>
       <div className="subtabs">
         <button className={tab === 'routine' ? 'active' : ''} onClick={() => setTab('routine')}>📋 Rutina</button>
-        <button className={tab === 'gym' ? 'active' : ''} onClick={() => setTab('gym')}>🏋️ Libre</button>
+        <button className={tab === 'progress' ? 'active' : ''} onClick={() => setTab('progress')}>📈 Progreso</button>
         <button className={tab === 'run' ? 'active' : ''} onClick={() => setTab('run')}>🏃 Running</button>
         <button className={tab === 'timer' ? 'active' : ''} onClick={() => setTab('timer')}>⏱</button>
       </div>
+      {toast && <div className="toast-pts">{toast}</div>}
 
       {tab === 'routine' && (
         <div>
@@ -282,103 +463,87 @@ export default function Training({ users, currentUser, workouts, actions }) {
           <label className="flabel">Frecuencia semanal</label>
           <div className="day-picker" style={{ marginBottom: 12 }}>
             {[2, 3, 4, 5].map((f) => (
-              <button key={f} type="button" className={freq === f ? 'sel' : ''} onClick={() => { setFreq(f); setDayIdx(0); }}>{f} días</button>
+              <button key={f} type="button" className={freq === f ? 'sel' : ''} onClick={() => setFreq(f)}>{f} días</button>
             ))}
           </div>
 
-          <div className="day-picker" style={{ marginBottom: 14, flexWrap: 'wrap' }}>
+          <div className="day-picker" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
             {days.map((d, i) => (
-              <button key={i} type="button" className={dayIdx === i ? 'sel' : ''} onClick={() => setDayIdx(i)}>{i + 1}</button>
+              <button key={i} type="button" className={dayIdx === i ? 'sel' : ''} onClick={() => { setDayIdx(i); setEditing(false); }}>
+                {weekdayFor(i) !== null ? DOW_LABELS[weekdayFor(i)] : i + 1}
+              </button>
             ))}
           </div>
-          <h3 className="shop-sub" style={{ marginTop: 0 }}>{day.title}</h3>
 
-          {routine.pre.length > 0 && (
+          <div className="routine-title-row">
+            <h3 className="shop-sub" style={{ margin: 0 }}>{day.title}</h3>
+            <span className="progress-pill">{doneCount}/{day.ex.length}</span>
+            <button className="btn btn-ghost btn-small" onClick={() => setEditing((e) => !e)}>{editing ? 'Listo' : '✏️ Editar'}</button>
+          </div>
+          <div className="bar-track" style={{ margin: '8px 0 14px' }}>
+            <div className="bar-fill" style={{ width: `${(doneCount / Math.max(1, day.ex.length)) * 100}%` }} />
+          </div>
+          <div className="hmeta" style={{ marginBottom: 10 }}>+{EXERCISE_POINTS} pts por ejercicio · +{ROUTINE_BONUS} pts extra al completar toda la rutina.</div>
+
+          {editing ? (
             <>
-              <div className="flabel" style={{ marginTop: 6 }}>🦶 Bloque fijo de tobillo (pre-rutina)</div>
-              {routine.pre.map((ex) => (
-                <RoutineExercise key={'pre-' + ex.name} ex={ex} lastSets={lastSessions[ex.name]} onSave={(n, s) => actions.logGym(currentUser.id, n, s)} />
+              {day.ex.map((ex, i) => (
+                <EditRow key={i} ex={ex} uid={uid} index={i} total={day.ex.length}
+                  onChange={(v) => changeEx(i, v)} onMove={(d) => moveEx(i, d)} onRemove={() => removeEx(i)} />
               ))}
-              <div className="flabel" style={{ marginTop: 14 }}>Rutina</div>
+              <button className="btn btn-ghost" style={{ width: '100%', marginBottom: 8 }} onClick={addEx}>+ Agregar ejercicio</button>
+              {store.isCustom(profile, freq) && (
+                <button className="btn btn-ghost" style={{ width: '100%', color: 'var(--coral)', borderColor: 'var(--coral)' }}
+                  onClick={() => window.confirm('¿Volver a la rutina original de ' + freq + ' días?') && store.reset(profile, freq)}>
+                  Restaurar rutina original
+                </button>
+              )}
+              <div className="hmeta" style={{ marginTop: 8 }}>Tus cambios se guardan en este dispositivo.</div>
+            </>
+          ) : (
+            <>
+              {routine.pre.length > 0 && (
+                <>
+                  <div className="flabel" style={{ marginTop: 6 }}>🦶 Bloque fijo de tobillo (pre-rutina)</div>
+                  {routine.pre.map((ex) => (
+                    <RoutineExercise key={'pre-' + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]}
+                      onComplete={(e, s) => completeExercise(e, s, true)} />
+                  ))}
+                  <div className="flabel" style={{ marginTop: 14 }}>Rutina</div>
+                </>
+              )}
+              {day.ex.map((ex) => (
+                <RoutineExercise key={day.title + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]}
+                  onComplete={(e, s) => completeExercise(e, s, false)} />
+              ))}
+              {routine.cardio && (
+                <div className="log-card">
+                  <div className="lname">🚶 Cardio suave final (15-20 min)</div>
+                  <div className="hmeta">Bici, caminata inclinada o elíptica. Sin impacto.</div>
+                  <div className="field-row cols-2" style={{ marginTop: 8 }}>
+                    <input type="number" min="1" value={cardioMin} onChange={(e) => setCardioMin(e.target.value)} />
+                    <button className="btn btn-primary" onClick={saveCardio}>{cardioDone ? 'Completado ✓' : 'Registrar cardio'}</button>
+                  </div>
+                </div>
+              )}
             </>
           )}
-
-          {day.ex.map((ex) => (
-            <RoutineExercise key={day.title + ex.name} ex={ex} lastSets={lastSessions[ex.name]} onSave={(n, s) => actions.logGym(currentUser.id, n, s)} />
-          ))}
-
-          {routine.cardio && (
-            <div className="log-card">
-              <div className="lname">🚶 Cardio suave final (15-20 min)</div>
-              <div className="hmeta">Bici, caminata inclinada o elíptica. Sin impacto.</div>
-              <div className="field-row cols-2" style={{ marginTop: 8 }}>
-                <input type="number" min="1" value={cardioMin} onChange={(e) => setCardioMin(e.target.value)} />
-                <button className="btn btn-primary" onClick={saveCardio}>{cardioDone ? 'Completado ✓' : 'Registrar cardio'}</button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {(tab === 'gym' || tab === 'run') && (
-        <div className="field-row">
-          <label className="flabel">Ver historial de</label>
-          <div className="day-picker">
-            <button type="button" className={historyFilter === 'all' ? 'sel' : ''} onClick={() => setHistoryFilter('all')}>Todos</button>
-            {users.map((u) => (
-              <button key={u.id} type="button" className={historyFilter === u.id ? 'sel' : ''} onClick={() => setHistoryFilter(u.id)}>{u.name}</button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {tab === 'gym' && (
-        <div>
-          <div className="field-row">
-            <label className="flabel">Ejercicio</label>
-            <select value={exercise} onChange={(e) => setExercise(e.target.value)}>
-              {FREE_EXERCISES.map((ex) => <option key={ex}>{ex}</option>)}
-            </select>
-          </div>
-          {exercise !== 'Otro…' && <ExerciseIcon name={exercise} />}
-          {exercise === 'Otro…' && (
-            <div className="field-row">
-              <input placeholder="Nombre del ejercicio" value={customExercise} onChange={(e) => setCustomExercise(e.target.value)} />
-            </div>
-          )}
-          <div className="field-row cols-2">
-            <div><label className="flabel">Reps</label><input type="number" min="1" value={reps} onChange={(e) => setReps(e.target.value)} /></div>
-            <div><label className="flabel">Peso (kg)</label><input type="number" min="0" value={weight} onChange={(e) => setWeight(e.target.value)} /></div>
-          </div>
-          {lastSessions[exercise] && <div className="hmeta" style={{ marginBottom: 8 }}>Sesión anterior: {lastSessions[exercise].map((s) => `${s.reps}×${s.weight}kg`).join(' · ')}</div>}
-          <button className="btn btn-ghost" style={{ width: '100%', marginBottom: 10 }} onClick={addSet}>+ Agregar serie</button>
-
-          {pendingSets.length ? (
-            pendingSets.map((s, i) => (
-              <div className="set-row" key={i}>
-                <span className="idx">S{i + 1}</span>
-                <span className="spec">{s.reps} reps × {s.weight} kg</span>
-                <button className="rm" onClick={() => removeSet(i)}>✕</button>
-              </div>
-            ))
-          ) : (
-            <div className="empty" style={{ padding: '10px 0' }}>Agregá al menos una serie.</div>
-          )}
-          <button className="btn btn-primary" style={{ width: '100%', margin: '6px 0 18px' }} onClick={saveGym}>Guardar ejercicio</button>
-
-          {gymLogs.length ? gymLogs.map((g) => (
-            <div className="log-card" key={g.id}>
-              <div className="lhead"><span className="lname">{g.exercise_name}</span><span className="ldate">{fmtShort(new Date(g.created_at))} · {userName(users, g.user_id)}</span></div>
-              <div className="ldetail">
-                {(g.sets || []).map((s, i) => <span className="setline" key={i}>Serie {i + 1}: {s.reps} reps × {s.weight} kg</span>)}
-              </div>
-            </div>
-          )) : <div className="empty">Sin registros todavía.</div>}
-        </div>
-      )}
+      {tab === 'progress' && <Progress history={history} />}
 
       {tab === 'run' && (
         <div>
+          <div className="field-row">
+            <label className="flabel">Ver historial de</label>
+            <div className="day-picker">
+              <button type="button" className={historyFilter === 'all' ? 'sel' : ''} onClick={() => setHistoryFilter('all')}>Todos</button>
+              {users.map((u) => (
+                <button key={u.id} type="button" className={historyFilter === u.id ? 'sel' : ''} onClick={() => setHistoryFilter(u.id)}>{u.name}</button>
+              ))}
+            </div>
+          </div>
           <div className="field-row cols-2">
             <div><label className="flabel">Duración (min)</label><input type="number" min="1" value={runMin} onChange={(e) => setRunMin(e.target.value)} /></div>
             <div><label className="flabel">Distancia (km)</label><input type="number" min="0" step="0.1" value={runKm} onChange={(e) => setRunKm(e.target.value)} /></div>

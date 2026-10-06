@@ -7,6 +7,8 @@ import Habits, { useHabitReminders } from './components/Habits';
 import Training from './components/Training';
 import Shop from './components/Shop';
 import TabBar from './components/TabBar';
+import Onboarding from './components/Onboarding';
+import { useCommitments, hasCommitment } from './lib/commitments';
 
 const PROFILE_KEY = 'pozo-comun-profile-id';
 
@@ -20,6 +22,8 @@ export default function App() {
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem(PROFILE_KEY));
   const [screen, setScreen] = useState('board');
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [editCommit, setEditCommit] = useState(false);
+  const commitVersion = useCommitments(); // carga y re-renderiza cuando cambian los compromisos
 
   useEffect(() => {
     if (currentUserId) localStorage.setItem(PROFILE_KEY, currentUserId);
@@ -45,6 +49,23 @@ export default function App() {
   const currentUser = users.find((u) => u.id === currentUserId);
   if (!currentUser) {
     return <ProfileGate users={users} onPick={(u) => setCurrentUserId(u.id)} />;
+  }
+
+  if (commitVersion === 0) {
+    return <div className="empty" style={{ paddingTop: 80 }}>Cargando…</div>;
+  }
+
+  if (editCommit || !hasCommitment(currentUser.id)) {
+    return (
+      <div className="app">
+        <Onboarding
+          user={currentUser}
+          habits={habits}
+          onDone={() => setEditCommit(false)}
+          onCancel={hasCommitment(currentUser.id) ? () => setEditCommit(false) : null}
+        />
+      </div>
+    );
   }
 
   function handleToggleAdmin() {
@@ -100,6 +121,7 @@ export default function App() {
             isAdmin={isAdminMode}
             actions={actions}
             trackingStartDate={trackingStartDate}
+            onEditCommitments={() => setEditCommit(true)}
           />
         )}
         {screen === 'training' && (

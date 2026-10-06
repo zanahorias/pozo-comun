@@ -2,8 +2,8 @@ export default function ProfileGate({ users, onPick }) {
   return (
     <div className="gate">
       <div className="gate-card">
-        <div className="brand-mark" style={{ margin: '0 auto 14px' }}>PC</div>
-        <h1 className="display" style={{ fontSize: 20, marginBottom: 4 }}>Pozo Común</h1>
+        <div className="brand-mark" style={{ margin: '0 auto 14px' }}>↑</div>
+        <h1 className="display" style={{ fontSize: 20, marginBottom: 4 }}>Arriba!</h1>
         <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 20 }}>
           ¿Quién sos?
         </p>

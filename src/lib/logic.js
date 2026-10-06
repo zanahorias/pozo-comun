@@ -1,4 +1,5 @@
 import { stripTime, dateKey, today, mondayOfWeek, effectiveNow } from './dates';
+import { habitDays } from './commitments';
 
 function effectiveStart(habit, trackingStartDate) {
   const habitStart = habit.created_at ? stripTime(new Date(habit.created_at)) : null;
@@ -8,7 +9,7 @@ function effectiveStart(habit, trackingStartDate) {
 }
 
 export function habitDayStatus(habit, dateObj, uid, habitLogs, trackingStartDate) {
-  if (!habit.days.includes(dateObj.getDay())) return 'none';
+  if (!habitDays(habit, uid, dateObj).includes(dateObj.getDay())) return 'none';
   const d = stripTime(dateObj);
   const t = today();
   if (d > t) return 'future';
@@ -33,7 +34,7 @@ export function habitDayStatus(habit, dateObj, uid, habitLogs, trackingStartDate
 // no se cumplió NINGUNO. "Cumplido" cuenta tanto 'done' como 'partial' (algo
 // de progreso en un hábito por cantidad ya es mejor que nada).
 export function dayAggregateStatus(habits, dateObj, uid, habitLogs, trackingStartDate) {
-  const scheduled = habits.filter((h) => h.days.includes(dateObj.getDay()));
+  const scheduled = habits.filter((h) => habitDays(h, uid, dateObj).includes(dateObj.getDay()));
   const relevant = scheduled.filter(
     (h) => habitDayStatus(h, dateObj, uid, habitLogs, trackingStartDate) !== 'none'
   );
@@ -68,7 +69,13 @@ export const Q4_CATALOG = [
   { name: 'Tiempo de Gaming / Cine', emoji: '🎮', cost: 800, scope: 'individual', description: 'Gaming o cine individual.' },
   { name: 'Salida corta / Desayuno afuera', emoji: '🥐', cost: 1200, scope: 'individual', description: 'Una salida corta o desayuno afuera.' },
   { name: 'Comodín de descanso', emoji: '🃏', cost: 3500, scope: 'individual', description: 'Saltá 1 hábito sin perder la racha.' },
+  { name: 'Noche de películas + delivery', emoji: '🍿', cost: 2500, scope: 'shared', description: 'Peli en casa y pedido a elección.' },
+  { name: 'Brunch / café juntos', emoji: '☕', cost: 3000, scope: 'shared', description: 'Desayuno o café largo de a dos.' },
+  { name: 'Masaje en casa', emoji: '💆', cost: 4000, scope: 'shared', description: 'Masaje o noche de relax en casa.' },
   { name: 'Salida / Cena especial juntos', emoji: '🍽️', cost: 5000, scope: 'shared', description: 'Cena o salida especial de a dos.' },
+  { name: 'Regalo sorpresa mutuo', emoji: '🎁', cost: 6500, scope: 'shared', description: 'Cada uno le regala algo al otro.' },
+  { name: 'Día de actividad juntos', emoji: '🚴', cost: 7500, scope: 'shared', description: 'Paseo, parque o actividad al aire libre.' },
+  { name: 'Spa / Día de bienestar', emoji: '🧖', cost: 9000, scope: 'shared', description: 'Spa o jornada de bienestar de a dos.' },
   { name: 'Fondo equipamiento / App upgrade', emoji: '🛠️', cost: 10000, scope: 'shared', description: 'Equipamiento o upgrade de app.' },
   { name: 'Escapada de fin de semana', emoji: '🏖️', cost: 15000, scope: 'shared', description: 'Meta Q4: escapada de fin de semana.' }
 ];
@@ -185,7 +192,7 @@ export function computeMissingRows(habits, users, habitLogs, trackingStartDate) 
     users.forEach((u) => {
       let d = new Date(rangeStart);
       while (d < t) {
-        if (habit.days.includes(d.getDay())) {
+        if (habitDays(habit, u.id, d).includes(d.getDay())) {
           const key = dateKey(d);
           const exists = habitLogs.some(
             (e) => e.habit_id === habit.id && e.user_id === u.id && e.log_date === key
@@ -215,7 +222,7 @@ export function computeMissingRows(habits, users, habitLogs, trackingStartDate) 
 export function findRecoverableMiss(habit, uid, habitLogs, trackingStartDate) {
   if (habit.kind !== 'boolean') return null;
   const t = today();
-  if (habit.days.includes(t.getDay())) return null;
+  if (habitDays(habit, uid, t).includes(t.getDay())) return null;
   const monday = mondayOfWeek(t);
   let d = new Date(monday);
   while (d < t) {
@@ -282,7 +289,7 @@ export function nextReminder(now = new Date()) {
 // quedaron en estado 'done' para ese usuario. Si no había ningún hábito
 // programado y relevante ese día, no cuenta como perfecto ni como roto.
 export function isPerfectDay(habits, dateObj, uid, habitLogs, trackingStartDate) {
-  const scheduled = habits.filter((h) => h.days.includes(dateObj.getDay()));
+  const scheduled = habits.filter((h) => habitDays(h, uid, dateObj).includes(dateObj.getDay()));
   const relevant = scheduled.filter(
     (h) => habitDayStatus(h, dateObj, uid, habitLogs, trackingStartDate) !== 'none'
   );

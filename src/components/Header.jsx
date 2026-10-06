@@ -2,8 +2,8 @@ export default function Header({ users, currentUser, onSwitchUser, isAdmin, onTo
   return (
     <header className="top">
       <div className="brand">
-        <div className="brand-mark">PC</div>
-        <div className="brand-name">Pozo Común</div>
+        <div className="brand-mark">↑</div>
+        <div className="brand-name">Arriba!</div>
       </div>
       <div className="top-controls">
         <div className="switcher">
