@@ -9,6 +9,7 @@ import Shop from './components/Shop';
 import TabBar from './components/TabBar';
 import Onboarding from './components/Onboarding';
 import PointsFx from './components/PointsFx';
+import { userKey } from './lib/theme';
 import { useCommitments, hasCommitment } from './lib/commitments';
 
 const PROFILE_KEY = 'pozo-comun-profile-id';
@@ -29,6 +30,11 @@ export default function App() {
   useEffect(() => {
     if (currentUserId) localStorage.setItem(PROFILE_KEY, currentUserId);
   }, [currentUserId]);
+
+  // Color propio por usuario (menta, coral, violeta, ámbar).
+  useEffect(() => {
+    if (currentUserId && users.length) document.body.dataset.user = userKey(users, currentUserId);
+  }, [currentUserId, users]);
 
   // Recordatorios 20:00 / 23:00 desde cualquier pestaña (debe ir antes de los return).
   useHabitReminders(habits, habitLogs, currentUserId, trackingStartDate);
@@ -126,7 +132,7 @@ export default function App() {
           />
         )}
         {screen === 'training' && (
-          <Training users={users} currentUser={currentUser} workouts={workouts} actions={actions} isAdmin={isAdminMode} />
+          <Training users={users} currentUser={currentUser} workouts={workouts} actions={actions} isAdmin={isAdminMode} habits={habits} habitLogs={habitLogs} currentMultiplier={currentMultiplier} />
         )}
         {screen === 'shop' && (
           <Shop rewards={rewards} habitLogs={habitLogs} bonusLogs={bonusLogs} redemptions={redemptions} currentUser={currentUser} isAdmin={isAdminMode} actions={actions} />

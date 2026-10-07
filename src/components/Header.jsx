@@ -1,3 +1,5 @@
+import { userKey } from '../lib/theme';
+
 export default function Header({ users, currentUser, onSwitchUser, isAdmin, onToggleAdmin, userTotals }) {
   return (
     <header className="top">
@@ -10,6 +12,7 @@ export default function Header({ users, currentUser, onSwitchUser, isAdmin, onTo
           {users.map((u) => (
             <button
               key={u.id}
+              data-user={userKey(users, u.id)}
               className={u.id === currentUser.id ? 'active' : ''}
               onClick={() => onSwitchUser(u)}
             >

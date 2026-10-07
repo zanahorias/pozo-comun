@@ -130,3 +130,38 @@
 .act-chip.sel { border-color: var(--court); background: color-mix(in srgb, var(--court) 14%, var(--card)); color: var(--court); }
 .wallet-value small { font-size: 12px; font-weight: 600; color: var(--muted); }
 .rest-card { text-align: center; padding: 22px 16px; }
+
+/* ===== Color propio por usuario =====
+   <body data-user="nico|cristi|u0..u3"> lo pone App.jsx; cambia el acento de toda la app. */
+:root { --u-nico: #0FA97A; --u-cristi: #E5546B; --u-u0: #0FA97A; --u-u1: #E5546B; --u-u2: #7C5CFF; --u-u3: #E09A12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --u-nico: #3DFFB5; --u-cristi: #FF7A85; --u-u0: #3DFFB5; --u-u1: #FF7A85; --u-u2: #B79CFF; --u-u3: #FFC247; } }
+
+body[data-user="nico"]   { --court: var(--u-nico);   --court-light: var(--u-nico); }
+body[data-user="cristi"] { --court: var(--u-cristi); --court-light: var(--u-cristi); }
+body[data-user="u0"] { --court: var(--u-u0); --court-light: var(--u-u0); }
+body[data-user="u1"] { --court: var(--u-u1); --court-light: var(--u-u1); }
+body[data-user="u2"] { --court: var(--u-u2); --court-light: var(--u-u2); }
+body[data-user="u3"] { --court: var(--u-u3); --court-light: var(--u-u3); }
+body[data-user] { --chalk: #0B0C14; --green-soft: color-mix(in srgb, var(--court) 18%, var(--card, #fff)); }
+body[data-user="nico"] .btn-primary, body[data-user="cristi"] .btn-primary,
+body[data-user] .btn-primary { background: var(--court); color: #0B0C14; }
+
+/* Cada usuario con su color donde se lo nombra */
+[data-user="nico"]   { --u: var(--u-nico); }
+[data-user="cristi"] { --u: var(--u-cristi); }
+[data-user="u0"] { --u: var(--u-u0); } [data-user="u1"] { --u: var(--u-u1); }
+[data-user="u2"] { --u: var(--u-u2); } [data-user="u3"] { --u: var(--u-u3); }
+.who[data-user] { color: var(--u); font-weight: 800; }
+.switcher button[data-user] { border-bottom: 3px solid var(--u); }
+.switcher button.active[data-user] { background: var(--u); color: #0B0C14; border-bottom-color: var(--u); }
+.switcher button.active[data-user] .switcher-total { color: #0B0C14; }
+.gate-options .btn-user[data-user] { background: var(--u); color: #0B0C14; }
+
+/* ===== Mis comodines / stock ===== */
+.owned-badge { display: inline-block; font-size: 11px; font-weight: 800; color: var(--chalk); background: var(--court); padding: 3px 9px; border-radius: 999px; margin: 2px 0 6px; }
+.voucher { border-left: 4px solid var(--court); }
+.voucher.is-shared { border-left-color: var(--amber); }
+.act-summary { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.act-sum-item { display: flex; justify-content: space-between; font-size: 12.5px; }
+.act-sum-item b { font-weight: 700; color: var(--court); }
+.subtabs button { white-space: nowrap; }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CAL_DOW_LABELS, DOW_LABELS, dateKey, mondayOfWeek, today } from '../lib/dates';
 import {
   habitDayStatus, findRecoverableMiss, findJokerTarget, parseReward,
-  incompleteToday, nextReminder, habitLabel
+  incompleteToday, nextReminder, habitLabel, findAdvanceTarget
 } from '../lib/logic';
 import { supabase } from '../lib/supabase';
 import { habitDays } from '../lib/commitments';
@@ -10,6 +10,7 @@ import '../theme-q4.css';
 
 const DEFAULT_NEW_POINTS = 5;
 
+const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const STATUS_LABEL = { done: 'Completado', pending: 'Pendiente', partial: 'En progreso', missed: 'Perdido' };
 
 function StatusTag({ status }) {
@@ -265,6 +266,12 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
     refreshJokers();
   }
 
+  // Adelantar: cumple hoy el hábito de un día próximo de esta semana.
+  function advance(habit, date) {
+    if (!window.confirm(`¿Adelantar "${habitLabel(habit)}" del ${DAY_NAMES[date.getDay()]}? Suma sus puntos ahora y ese día ya queda cumplido.`)) return;
+    actions.advanceHabit(habit, currentUser.id, date);
+  }
+
   // Recuperar: se valida de nuevo al hacer click (el día en curso nunca se toca).
   function recover(h) {
     const entry = findRecoverableMiss(h, currentUser.id, habitLogs, trackingStartDate);
@@ -343,6 +350,7 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
         const status = scheduledToday ? habitDayStatus(h, t, currentUser.id, habitLogs, trackingStartDate) : 'none';
         const done = status === 'done';
         const recoverable = findRecoverableMiss(h, currentUser.id, habitLogs, trackingStartDate);
+        const advanceDate = findAdvanceTarget(h, currentUser.id, habitLogs, trackingStartDate);
         const jokerTarget = jokers > 0 ? findJokerTarget(h, currentUser.id, habitLogs, trackingStartDate) : null;
         const todayEntry = habitLogs.find((e) => e.habit_id === h.id && e.user_id === currentUser.id && e.log_date === dateKey(t));
         return (
@@ -369,6 +377,12 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
               <div className="recover-row">
                 <span>Tenés un día perdido esta semana en "{habitLabel(h)}".</span>
                 <button className="btn btn-ghost btn-small" onClick={() => recover(h)}>Recuperar con hoy</button>
+              </div>
+            )}
+            {advanceDate && (
+              <div className="recover-row">
+                <span>{status === 'done' ? 'Ya cumpliste hoy.' : 'Hoy no corresponde.'} ¿Querés adelantar el del {DAY_NAMES[advanceDate.getDay()]}?</span>
+                <button className="btn btn-ghost btn-small" onClick={() => advance(h, advanceDate)}>⏩ Adelantar</button>
               </div>
             )}
             {jokers > 0 && (status === 'pending' || jokerTarget) && (

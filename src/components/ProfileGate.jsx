@@ -1,3 +1,5 @@
+import { userKey } from '../lib/theme';
+
 export default function ProfileGate({ users, onPick }) {
   return (
     <div className="gate">
@@ -9,7 +11,7 @@ export default function ProfileGate({ users, onPick }) {
         </p>
         <div className="gate-options">
           {users.map((u) => (
-            <button key={u.id} className="btn btn-primary" style={{ width: '100%' }} onClick={() => onPick(u)}>
+            <button key={u.id} data-user={userKey(users, u.id)} className="btn btn-primary btn-user" style={{ width: '100%' }} onClick={() => onPick(u)}>
               {u.name}
             </button>
           ))}

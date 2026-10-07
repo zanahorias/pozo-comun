@@ -12,12 +12,11 @@ export function habitDayStatus(habit, dateObj, uid, habitLogs, trackingStartDate
   if (!habitDays(habit, uid, dateObj).includes(dateObj.getDay())) return 'none';
   const d = stripTime(dateObj);
   const t = today();
-  if (d > t) return 'future';
-
   const key = dateKey(d);
   const entry = habitLogs.find(
     (e) => e.habit_id === habit.id && e.user_id === uid && e.log_date === key
   );
+  if (d > t) return entry ? 'done' : 'future'; // 'done' = día adelantado
   if (entry) {
     if (habit.kind === 'quantity' && (entry.amount || 0) < habit.target) return 'partial';
     return entry.points < 0 ? 'missed' : 'done';
@@ -65,32 +64,42 @@ export const SCOPE = { INDIVIDUAL: 'individual', SHARED: 'shared' };
 export const POOL_FEED_RATE = 1;
 // Bonus al Pozo cuando AMBOS cumplen el mismo hábito compartido el mismo día
 // (múltiplo de los puntos del hábito).
-export const SHARED_POOL_BONUS_MULT = 1;
+// Ahora el x2 de los hábitos compartidos ya está dentro de los puntos de cada log,
+// así que no se suma un bonus aparte al Pozo.
+export const SHARED_POOL_BONUS_MULT = 0;
+
+// Precios "exigentes": con ~50 pts por día por persona, un gustito cuesta ~3 semanas y un
+// comodín ~3 meses. Para endurecer o aflojar todo a la vez, cambiá PRICE_SCALE (1 = base).
+export const PRICE_SCALE = 1;
+const P = (n) => Math.max(50, Math.round((n * PRICE_SCALE) / 50) * 50);
+
+// Máximo de canjes SIN USAR por recompensa (evita acumular comodines y actividades).
+export const MAX_STOCK = 1;
 
 export const Q4_CATALOG = [
-  { name: 'Gustito / Soda / Snack', emoji: '🥤', cost: 450, scope: 'individual', description: 'Un gustito para vos.' },
-  { name: 'Tiempo de Gaming / Cine', emoji: '🎮', cost: 800, scope: 'individual', description: 'Gaming o cine individual.' },
-  { name: 'Salida corta / Desayuno afuera', emoji: '🥐', cost: 1200, scope: 'individual', description: 'Una salida corta o desayuno afuera.' },
-  { name: 'Comodín de descanso', emoji: '🃏', cost: 3500, scope: 'individual', description: 'Saltá 1 hábito sin perder la racha.' },
-  { name: 'Postre / helado juntos', emoji: '🍨', cost: 1500, scope: 'shared', description: 'Postre o helado de a dos.' },
-  { name: 'Elegir la peli o serie de la semana', emoji: '🎬', cost: 1200, scope: 'shared', description: 'Quien canjea elige qué ver.' },
-  { name: 'Noche de juegos de mesa + snacks', emoji: '🎲', cost: 2000, scope: 'shared', description: 'Juegos de mesa con picada.' },
-  { name: 'Desayuno en la cama', emoji: '🥞', cost: 2200, scope: 'shared', description: 'Desayuno servido en la cama.' },
-  { name: 'Día sin tareas del hogar', emoji: '🧹', cost: 3500, scope: 'shared', description: 'El otro se encarga de las tareas del día.' },
-  { name: 'Picnic en el parque', emoji: '🧺', cost: 3500, scope: 'shared', description: 'Picnic armado para los dos.' },
-  { name: 'Cine juntos (entradas + pochoclos)', emoji: '🎟️', cost: 4500, scope: 'shared', description: 'Entradas y pochoclos incluidos.' },
-  { name: 'Clase o taller nuevo juntos', emoji: '👩‍🍳', cost: 8000, scope: 'shared', description: 'Cocina, baile, cerámica… algo nuevo.' },
-  { name: 'Noche de hotel en la ciudad', emoji: '🏨', cost: 11000, scope: 'shared', description: 'Una noche de hotel de a dos.' },
-  { name: 'Show / concierto / evento', emoji: '🎤', cost: 12500, scope: 'shared', description: 'Entradas para un show o evento.' },
-  { name: 'Noche de películas + delivery', emoji: '🍿', cost: 2500, scope: 'shared', description: 'Peli en casa y pedido a elección.' },
-  { name: 'Brunch / café juntos', emoji: '☕', cost: 3000, scope: 'shared', description: 'Desayuno o café largo de a dos.' },
-  { name: 'Masaje en casa', emoji: '💆', cost: 4000, scope: 'shared', description: 'Masaje o noche de relax en casa.' },
-  { name: 'Salida / Cena especial juntos', emoji: '🍽️', cost: 5000, scope: 'shared', description: 'Cena o salida especial de a dos.' },
-  { name: 'Regalo sorpresa mutuo', emoji: '🎁', cost: 6500, scope: 'shared', description: 'Cada uno le regala algo al otro.' },
-  { name: 'Día de actividad juntos', emoji: '🚴', cost: 7500, scope: 'shared', description: 'Paseo, parque o actividad al aire libre.' },
-  { name: 'Spa / Día de bienestar', emoji: '🧖', cost: 9000, scope: 'shared', description: 'Spa o jornada de bienestar de a dos.' },
-  { name: 'Fondo equipamiento / App upgrade', emoji: '🛠️', cost: 10000, scope: 'shared', description: 'Equipamiento o upgrade de app.' },
-  { name: 'Escapada de fin de semana', emoji: '🏖️', cost: 15000, scope: 'shared', description: 'Meta Q4: escapada de fin de semana.' }
+  { name: 'Gustito / Soda / Snack', emoji: '🥤', cost: P(900), scope: 'individual', description: 'Un gustito para vos.' },
+  { name: 'Tiempo de Gaming / Cine', emoji: '🎮', cost: P(1800), scope: 'individual', description: 'Gaming o cine individual.' },
+  { name: 'Salida corta / Desayuno afuera', emoji: '🥐', cost: P(2700), scope: 'individual', description: 'Una salida corta o desayuno afuera.' },
+  { name: 'Comodín de descanso', emoji: '🃏', cost: P(5000), scope: 'individual', description: 'Saltá 1 hábito sin perder la racha.' },
+  { name: 'Postre / helado juntos', emoji: '🍨', cost: P(2200), scope: 'shared', description: 'Postre o helado de a dos.' },
+  { name: 'Elegir la peli o serie de la semana', emoji: '🎬', cost: P(1800), scope: 'shared', description: 'Quien canjea elige qué ver.' },
+  { name: 'Noche de juegos de mesa + snacks', emoji: '🎲', cost: P(3000), scope: 'shared', description: 'Juegos de mesa con picada.' },
+  { name: 'Desayuno en la cama', emoji: '🥞', cost: P(3500), scope: 'shared', description: 'Desayuno servido en la cama.' },
+  { name: 'Día sin tareas del hogar', emoji: '🧹', cost: P(5000), scope: 'shared', description: 'El otro se encarga de las tareas del día.' },
+  { name: 'Picnic en el parque', emoji: '🧺', cost: P(5000), scope: 'shared', description: 'Picnic armado para los dos.' },
+  { name: 'Cine juntos (entradas + pochoclos)', emoji: '🎟️', cost: P(7000), scope: 'shared', description: 'Entradas y pochoclos incluidos.' },
+  { name: 'Clase o taller nuevo juntos', emoji: '👩‍🍳', cost: P(12000), scope: 'shared', description: 'Cocina, baile, cerámica… algo nuevo.' },
+  { name: 'Noche de hotel en la ciudad', emoji: '🏨', cost: P(17000), scope: 'shared', description: 'Una noche de hotel de a dos.' },
+  { name: 'Show / concierto / evento', emoji: '🎤', cost: P(19000), scope: 'shared', description: 'Entradas para un show o evento.' },
+  { name: 'Noche de películas + delivery', emoji: '🍿', cost: P(4000), scope: 'shared', description: 'Peli en casa y pedido a elección.' },
+  { name: 'Brunch / café juntos', emoji: '☕', cost: P(5500), scope: 'shared', description: 'Desayuno o café largo de a dos.' },
+  { name: 'Masaje en casa', emoji: '💆', cost: P(6500), scope: 'shared', description: 'Masaje o noche de relax en casa.' },
+  { name: 'Salida / Cena especial juntos', emoji: '🍽️', cost: P(8500), scope: 'shared', description: 'Cena o salida especial de a dos.' },
+  { name: 'Regalo sorpresa mutuo', emoji: '🎁', cost: P(9500), scope: 'shared', description: 'Cada uno le regala algo al otro.' },
+  { name: 'Día de actividad juntos', emoji: '🚴', cost: P(11000), scope: 'shared', description: 'Paseo, parque o actividad al aire libre.' },
+  { name: 'Spa / Día de bienestar', emoji: '🧖', cost: P(13000), scope: 'shared', description: 'Spa o jornada de bienestar de a dos.' },
+  { name: 'Fondo equipamiento / App upgrade', emoji: '🛠️', cost: P(15000), scope: 'shared', description: 'Equipamiento o upgrade de app.' },
+  { name: 'Escapada de fin de semana', emoji: '🏖️', cost: P(24000), scope: 'shared', description: 'Meta Q4: escapada de fin de semana.' }
 ];
 
 const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
@@ -322,4 +331,27 @@ export function currentStreak(habits, uid, habitLogs, trackingStartDate) {
     d = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
   }
   return streak;
+}
+
+// --- Adelantar hábitos -------------------------------------------------------
+
+// Próximo día de esta semana en que corresponde el hábito y todavía no está
+// cumplido. Solo se ofrece si hoy no corresponde o hoy ya está cumplido, y si no
+// hay otro día adelantado pendiente.
+export function findAdvanceTarget(habit, uid, habitLogs, trackingStartDate) {
+  if (habit.kind !== 'boolean') return null;
+  const t = today();
+  const todayStatus = habitDayStatus(habit, t, uid, habitLogs, trackingStartDate);
+  if (todayStatus === 'pending' || todayStatus === 'partial' || todayStatus === 'missed') return null;
+  const tk = dateKey(t);
+  const pendingAdvance = habitLogs.some((e) => e.habit_id === habit.id && e.user_id === uid && e.log_date > tk);
+  if (pendingAdvance) return null;
+  const end = new Date(mondayOfWeek(t));
+  end.setDate(end.getDate() + 6);
+  let d = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
+  while (d <= end) {
+    if (habitDayStatus(habit, d, uid, habitLogs, trackingStartDate) === 'future') return new Date(d);
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  }
+  return null;
 }

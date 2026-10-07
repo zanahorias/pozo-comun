@@ -6,9 +6,10 @@ import ExerciseImage from './ExerciseImage';
 import TimerTool from './TimerTool';
 import '../theme-q4.css';
 
-// Puntos por entrenar (se guardan como bonus_logs: ex_<ejercicio> y routine_complete).
-export const EXERCISE_POINTS = 3;
-export const ROUTINE_BONUS = 15;
+// El hábito de ejercicio vale H puntos. Cada ejercicio da una parte (60% de H repartido)
+// y al terminar la rutina el hábito se completa con el resto: el total del día = H.
+export const EXERCISE_SHARE = 0.6;
+const FALLBACK_PTS = 3;
 
 const x = (name, spec, en = '') => ({ name, spec, en });
 
@@ -145,18 +146,31 @@ function useHistory(userId, workouts) {
   return state;
 }
 
+// Registros de cardio (de todos) compartidos por la pestaña Cardio y Progreso.
+function useCardioLogs(workouts) {
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('workouts').select('*').eq('type', 'cardio').order('created_at', { ascending: false }).limit(500);
+    setLogs(data || []);
+  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load, workouts]);
+  return [logs, load];
+}
+
 // Ejercicios ya completados en el día en curso.
 function useDoneToday(userId) {
   const [done, setDone] = useState({});
   const refresh = useCallback(async () => {
     const { data } = await supabase
       .from('workouts')
-      .select('exercise_name,sets')
+      .select('id,exercise_name,sets,created_at')
       .eq('user_id', userId)
       .eq('type', 'strength')
-      .gte('created_at', dayStartIso());
+      .gte('created_at', dayStartIso())
+      .order('created_at', { ascending: true });
     const m = {};
-    (data || []).forEach((w) => { m[w.exercise_name] = w.sets; });
+    // Si hubiera duplicados, vale el primero (el que cuenta como completado).
+    (data || []).forEach((w) => { if (!m[w.exercise_name]) m[w.exercise_name] = { id: w.id, sets: w.sets }; });
     setDone(m);
     return m;
   }, [userId]);
@@ -167,7 +181,7 @@ function useDoneToday(userId) {
 // ---------------------------------------------------------------------------
 // Tarjeta de ejercicio (se achica al completarlo)
 // ---------------------------------------------------------------------------
-function RoutineExercise({ ex, uid, lastSets, doneSets, onComplete }) {
+function RoutineExercise({ ex, uid, lastSets, doneSets, pts, onComplete, onUncomplete }) {
   const spec = parseSpec(ex.spec);
   const build = () =>
     Array.from({ length: spec.sets }, (_, i) => {
@@ -202,6 +216,7 @@ function RoutineExercise({ ex, uid, lastSets, doneSets, onComplete }) {
           <small>{doneSets.map((s) => `${s.reps}×${s.weight}kg`).join(' · ')}</small>
         </div>
         <button className="btn btn-ghost btn-small" onClick={() => setReopened(true)}>Ver</button>
+        <button className="btn btn-ghost btn-small" style={{ color: 'var(--coral)', borderColor: 'var(--coral)' }} onClick={onUncomplete}>↩ Desmarcar</button>
       </div>
     );
   }
@@ -226,8 +241,13 @@ function RoutineExercise({ ex, uid, lastSets, doneSets, onComplete }) {
         </div>
       ))}
       <button className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={saving} onClick={complete}>
-        {saving ? 'Guardando…' : `Ejercicio completado  (+${EXERCISE_POINTS} pts)`}
+        {saving ? 'Guardando…' : doneSets ? 'Actualizar series (sin puntos extra)' : `Ejercicio completado${pts ? `  (+${pts} pts)` : ''}`}
       </button>
+      {doneSets && (
+        <button className="btn btn-ghost" style={{ width: '100%', marginTop: 6, color: 'var(--coral)', borderColor: 'var(--coral)' }} onClick={onUncomplete}>
+          ↩ Desmarcar ejercicio (se descuentan sus puntos)
+        </button>
+      )}
     </div>
   );
 }
@@ -293,7 +313,7 @@ function Chart({ data, labels, color, kind, unit }) {
   );
 }
 
-function Progress({ history }) {
+function StrengthProgress({ history }) {
   const names = useMemo(() => {
     const c = {};
     history.forEach((w) => { c[w.exercise_name] = (c[w.exercise_name] || 0) + 1; });
@@ -364,7 +384,7 @@ function paceText(act, min, km) {
   return act.pace ? `${(min / km).toFixed(1)} min/km` : `${(km / (min / 60)).toFixed(1)} km/h`;
 }
 
-function Cardio({ users, uid, actions, workouts, onSaved }) {
+function Cardio({ users, uid, actions, logs, reload, onSaved }) {
   const [act, setAct] = useState('Trote');
   const [min, setMin] = useState(30);
   const [km, setKm] = useState('');
@@ -372,27 +392,8 @@ function Cardio({ users, uid, actions, workouts, onSaved }) {
   const [logs, setLogs] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    const { data } = await supabase.from('workouts').select('*').eq('type', 'cardio').order('created_at', { ascending: false }).limit(300);
-    setLogs(data || []);
-  }, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [load, workouts]);
-
   const current = ACTIVITIES.find((a) => a.id === act);
   const shown = filter === 'all' ? logs : logs.filter((w) => w.user_id === filter);
-
-  const thisMon = mondayOf(new Date());
-  const weeks = Array.from({ length: 8 }, (_, i) => { const d = new Date(thisMon); d.setDate(d.getDate() - 7 * (7 - i)); return d; });
-  const kmWeek = weeks.map(() => 0);
-  let wkMin = 0, wkKm = 0, wkN = 0;
-  shown.forEach((w) => {
-    const m = mondayOf(new Date(w.created_at)).getTime();
-    const i = weeks.findIndex((d) => d.getTime() === m);
-    if (i < 0) return;
-    kmWeek[i] += Number(w.distance_km) || 0;
-    if (i === 7) { wkMin += Number(w.duration_min) || 0; wkKm += Number(w.distance_km) || 0; wkN += 1; }
-  });
 
   async function save() {
     const m = Number(min) || 0;
@@ -400,7 +401,7 @@ function Cardio({ users, uid, actions, workouts, onSaved }) {
     if (m <= 0 || saving) return;
     setSaving(true);
     await actions.logRun(uid, m, k, act);
-    await load();
+    await reload();
     setSaving(false);
     onSaved(`${current.icon} ${act} registrado · ${m} min${k ? ` · ${k} km` : ''}`);
     setKm('');
@@ -425,24 +426,13 @@ function Cardio({ users, uid, actions, workouts, onSaved }) {
       </button>
 
       <div className="field-row">
-        <label className="flabel">Ver de</label>
+        <label className="flabel">Historial de</label>
         <div className="day-picker">
           {users.map((u) => (
             <button key={u.id} type="button" className={filter === u.id ? 'sel' : ''} onClick={() => setFilter(u.id)}>{u.name}</button>
           ))}
           <button type="button" className={filter === 'all' ? 'sel' : ''} onClick={() => setFilter('all')}>Todos</button>
         </div>
-      </div>
-
-      <div className="wallets" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-        <div className="wallet"><div className="wallet-label">Esta semana</div><div className="wallet-value">{Math.round(wkKm * 10) / 10}<small> km</small></div></div>
-        <div className="wallet"><div className="wallet-label">Tiempo</div><div className="wallet-value">{wkMin}<small> min</small></div></div>
-        <div className="wallet"><div className="wallet-label">Sesiones</div><div className="wallet-value">{wkN}</div></div>
-      </div>
-
-      <div className="log-card">
-        <div className="lname">Kilómetros por semana</div>
-        <Chart data={kmWeek.map((v) => (v > 0 ? Math.round(v * 10) / 10 : null))} labels={weeks.map((d) => `${d.getDate()}/${d.getMonth() + 1}`)} color="var(--court)" kind="bar" unit="km" />
       </div>
 
       {shown.length ? shown.slice(0, 40).map((r) => {
@@ -461,10 +451,96 @@ function Cardio({ users, uid, actions, workouts, onSaved }) {
   );
 }
 
+// Progreso de cardio: resumen semanal y gráficos (km y minutos por semana).
+function CardioProgress({ cardio, users, uid }) {
+  const [filter, setFilter] = useState(uid);
+  const shown = filter === 'all' ? cardio : cardio.filter((w) => w.user_id === filter);
+  const thisMon = mondayOf(new Date());
+  const weeks = Array.from({ length: 8 }, (_, i) => { const d = new Date(thisMon); d.setDate(d.getDate() - 7 * (7 - i)); return d; });
+  const kmWeek = weeks.map(() => 0);
+  const minWeek = weeks.map(() => 0);
+  const byAct = {};
+  let wkMin = 0, wkKm = 0, wkN = 0;
+  shown.forEach((w) => {
+    const m = mondayOf(new Date(w.created_at)).getTime();
+    const i = weeks.findIndex((d) => d.getTime() === m);
+    if (i < 0) return;
+    const km = Number(w.distance_km) || 0;
+    const mn = Number(w.duration_min) || 0;
+    kmWeek[i] += km;
+    minWeek[i] += mn;
+    const a = actOf(w);
+    byAct[a.id] = byAct[a.id] || { icon: a.icon, km: 0, min: 0, n: 0 };
+    byAct[a.id].km += km; byAct[a.id].min += mn; byAct[a.id].n += 1;
+    if (i === 7) { wkMin += mn; wkKm += km; wkN += 1; }
+  });
+  const labels = weeks.map((d) => `${d.getDate()}/${d.getMonth() + 1}`);
+  const lastTwo = kmWeek.filter((v) => v > 0).slice(-2);
+  const delta = lastTwo.length === 2 ? Math.round((lastTwo[1] - lastTwo[0]) * 10) / 10 : null;
+
+  return (
+    <div>
+      <div className="field-row">
+        <label className="flabel">Ver de</label>
+        <div className="day-picker">
+          {users.map((u) => (
+            <button key={u.id} type="button" className={filter === u.id ? 'sel' : ''} onClick={() => setFilter(u.id)}>{u.name}</button>
+          ))}
+          <button type="button" className={filter === 'all' ? 'sel' : ''} onClick={() => setFilter('all')}>Todos</button>
+        </div>
+      </div>
+      <div className="wallets" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+        <div className="wallet"><div className="wallet-label">Esta semana</div><div className="wallet-value">{Math.round(wkKm * 10) / 10}<small> km</small></div></div>
+        <div className="wallet"><div className="wallet-label">Tiempo</div><div className="wallet-value">{wkMin}<small> min</small></div></div>
+        <div className="wallet"><div className="wallet-label">Sesiones</div><div className="wallet-value">{wkN}</div></div>
+      </div>
+      {delta !== null && (
+        <div className={'progress-chip ' + (delta >= 0 ? 'up' : 'down')}>
+          {delta > 0 ? '▲' : delta < 0 ? '▼' : '='} {Math.abs(delta)} km vs. la semana anterior con actividad
+        </div>
+      )}
+      {!shown.length ? <div className="empty">Registrá cardio en su pestaña y acá vas a ver tu avance.</div> : (
+        <>
+          <div className="log-card">
+            <div className="lname">Kilómetros por semana</div>
+            <Chart data={kmWeek.map((v) => (v > 0 ? Math.round(v * 10) / 10 : null))} labels={labels} color="var(--court)" kind="bar" unit="km" />
+          </div>
+          <div className="log-card">
+            <div className="lname">Minutos por semana</div>
+            <Chart data={minWeek.map((v) => (v > 0 ? Math.round(v) : null))} labels={labels} color="var(--amber)" kind="line" unit="min" />
+          </div>
+          <div className="log-card">
+            <div className="lname">Por actividad (últimas 8 semanas)</div>
+            <div className="act-summary">
+              {Object.entries(byAct).map(([name, v]) => (
+                <div key={name} className="act-sum-item"><span>{v.icon} {name}</span><b>{Math.round(v.km * 10) / 10} km · {v.min} min · {v.n}×</b></div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Progreso unificado: fuerza + cardio.
+function Progress({ history, cardio, users, uid }) {
+  const [view, setView] = useState('strength');
+  return (
+    <div>
+      <div className="day-picker" style={{ marginBottom: 14 }}>
+        <button type="button" className={view === 'strength' ? 'sel' : ''} onClick={() => setView('strength')}>💪 Fuerza</button>
+        <button type="button" className={view === 'cardio' ? 'sel' : ''} onClick={() => setView('cardio')}>❤️ Cardio</button>
+      </div>
+      {view === 'strength' ? <StrengthProgress history={history} /> : <CardioProgress cardio={cardio} users={users} uid={uid} />}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Pantalla
 // ---------------------------------------------------------------------------
-export default function Training({ users, currentUser, workouts, actions, isAdmin }) {
+export default function Training({ users, currentUser, workouts, actions, isAdmin, habits = [], habitLogs = [], currentMultiplier = 1 }) {
   const uid = currentUser.id;
   const [tab, setTab] = useState('routine');
   const autoProfile = profileOf(currentUser);
@@ -479,6 +555,7 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
 
   const store = useRoutineStore(uid);
   const { last, history } = useHistory(uid, workouts);
+  const [cardioLogs, reloadCardio] = useCardioLogs(workouts);
   const [doneToday, setDoneToday, refreshDone] = useDoneToday(uid);
 
   useEffect(() => { setProfile(autoProfile || 'nico'); }, [uid, autoProfile]);
@@ -515,26 +592,75 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 3500); };
 
+  const gymHabit = habits.find((h) => h.type === 'gym');
+  const fullPts = gymHabit ? Math.round(gymHabit.points * (currentMultiplier || 1)) : 0;
+  const sharePts = gymHabit ? Math.floor((fullPts * EXERCISE_SHARE) / Math.max(1, day.ex.length)) : FALLBACK_PTS;
+
+  // Suma puntos una sola vez por ejercicio y día (verifica antes de insertar).
   async function award(kind, points) {
-    const { error } = await supabase
-      .from('training_points')
-      .upsert([{ user_id: uid, kind, points, log_date: dateKey(today()) }], { onConflict: 'user_id,kind,log_date', ignoreDuplicates: true });
+    const key = dateKey(today());
+    const { data: ex } = await supabase.from('training_points').select('id').eq('user_id', uid).eq('kind', kind).eq('log_date', key).limit(1);
+    if (ex && ex.length) return null;
+    const { error } = await supabase.from('training_points').insert([{ user_id: uid, kind, points, log_date: key }]);
     if (error) { console.warn('training_points', error); return error.message || 'error'; }
     return null;
   }
 
   async function completeExercise(ex, sets, isPre = false) {
+    const prev = doneToday[ex.name];
+    // Ya estaba completado hoy: solo se actualizan las series, NO se suman puntos.
+    if (prev?.id) {
+      await supabase.from('workouts').update({ sets }).eq('id', prev.id);
+      setDoneToday({ ...doneToday, [ex.name]: { id: prev.id, sets } });
+      flash(`${ex.name} actualizado (sin puntos extra)`);
+      return;
+    }
     await actions.logGym(uid, ex.name, sets);
-    const err = await award('ex_' + slug(ex.name), EXERCISE_POINTS);
-    const nextDone = { ...doneToday, [ex.name]: sets };
-    setDoneToday(nextDone);
-    let msg = err ? `⚠️ ${ex.name} guardado, pero no sumó puntos: ${err}` : `+${EXERCISE_POINTS} pts · ${ex.name} ✓`;
-    if (!isPre && day.ex.every((e) => nextDone[e.name])) {
-      const errR = await award('routine_complete', ROUTINE_BONUS);
-      msg = errR ? `⚠️ Rutina completa, pero no sumó el bonus: ${errR}` : `🎉 ¡Rutina completa! +${ROUTINE_BONUS} pts de bonus`;
+    const nextDone = await refreshDone();
+    if (isPre) { flash(`${ex.name} ✓ (calentamiento, sin puntos)`); return; }
+
+    // Si el hábito de ejercicio ya está completo hoy, los ejercicios no suman más.
+    const key = dateKey(today());
+    let habitDone = false;
+    if (gymHabit) {
+      const { data: hl } = await supabase.from('habit_logs').select('points').eq('habit_id', gymHabit.id).eq('user_id', uid).eq('log_date', key).limit(1);
+      habitDone = !!(hl && hl[0] && hl[0].points > 0);
+    }
+    if (habitDone) { flash(`${ex.name} ✓ · el hábito de ejercicio ya estaba completo hoy`); return; }
+
+    let msg = '';
+    if (sharePts > 0) {
+      const err = await award('ex_' + slug(ex.name), sharePts);
+      msg = err ? `⚠️ ${ex.name} guardado, pero no sumó puntos: ${err}` : `+${sharePts} pts · ${ex.name} ✓`;
+    } else {
+      msg = `${ex.name} ✓`;
+    }
+    if (gymHabit && day.ex.every((e) => nextDone[e.name])) {
+      // Completa el hábito con el resto: el total del día queda igual al valor del hábito.
+      await actions.toggleHabitToday(gymHabit, uid);
+      await award('routine_done', 0); // marca: el hábito se completó desde la rutina
+      msg = `🎉 ¡Rutina completa! Hoy sumaste ${fullPts} pts en total`;
     }
     flash(msg);
-    refreshDone();
+  }
+
+  // Desmarcar un ejercicio hecho: borra su registro de hoy y descuenta sus puntos.
+  async function uncompleteExercise(ex, isPre = false) {
+    if (!window.confirm(`¿Desmarcar "${ex.name}"?${isPre ? '' : ' Se descuentan sus puntos.'}`)) return;
+    const key = dateKey(today());
+    await supabase.from('workouts').delete()
+      .eq('user_id', uid).eq('type', 'strength').eq('exercise_name', ex.name).gte('created_at', dayStartIso());
+    if (!isPre) {
+      await supabase.from('training_points').delete().eq('user_id', uid).eq('log_date', key).eq('kind', 'ex_' + slug(ex.name));
+      // Si el hábito se había completado al terminar la rutina, se vuelve a abrir.
+      const { data: mk } = await supabase.from('training_points').select('id').eq('user_id', uid).eq('log_date', key).eq('kind', 'routine_done');
+      if (mk && mk.length) {
+        await supabase.from('training_points').delete().eq('user_id', uid).eq('log_date', key).eq('kind', 'routine_done');
+        if (gymHabit) await supabase.from('habit_logs').delete().eq('habit_id', gymHabit.id).eq('user_id', uid).eq('log_date', key);
+      }
+    }
+    await refreshDone();
+    flash(`↩ ${ex.name} desmarcado`);
   }
 
   // --- edición de rutina ---
@@ -551,9 +677,9 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
       <h2 className="section-title">Entrenamiento</h2>
       <div className="subtabs">
         <button className={tab === 'routine' ? 'active' : ''} onClick={() => setTab('routine')}>📋 Rutina</button>
-        <button className={tab === 'progress' ? 'active' : ''} onClick={() => setTab('progress')}>📈 Progreso</button>
         <button className={tab === 'cardio' ? 'active' : ''} onClick={() => setTab('cardio')}>❤️ Cardio</button>
         <button className={tab === 'timer' ? 'active' : ''} onClick={() => setTab('timer')}>⏱</button>
+        <button className={tab === 'progress' ? 'active' : ''} onClick={() => setTab('progress')}>📈 Progreso</button>
       </div>
       {toast && <div className="toast-pts">{toast}</div>}
 
@@ -608,7 +734,7 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
           <div className="bar-track" style={{ margin: '8px 0 14px' }}>
             <div className="bar-fill" style={{ width: `${(doneCount / Math.max(1, day.ex.length)) * 100}%` }} />
           </div>
-          <div className="hmeta" style={{ marginBottom: 10 }}>+{EXERCISE_POINTS} pts por ejercicio · +{ROUTINE_BONUS} pts extra al completar toda la rutina.</div>
+          <div className="hmeta" style={{ marginBottom: 10 }}>El hábito de ejercicio vale {fullPts || '—'} pts: se reparten entre los ejercicios y el resto se suma al terminar la rutina. Marcar el hábito a mano da lo mismo.</div>
 
           {editing ? (
             <>
@@ -631,15 +757,15 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
                 <>
                   <div className="flabel" style={{ marginTop: 6 }}>🦶 Bloque fijo de tobillo (pre-rutina)</div>
                   {routine.pre.map((ex) => (
-                    <RoutineExercise key={'pre-' + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]}
-                      onComplete={(e, s) => completeExercise(e, s, true)} />
+                    <RoutineExercise key={'pre-' + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]?.sets}
+                      pts={0} onComplete={(e, s) => completeExercise(e, s, true)} onUncomplete={() => uncompleteExercise(ex, true)} />
                   ))}
                   <div className="flabel" style={{ marginTop: 14 }}>Rutina</div>
                 </>
               )}
               {day.ex.map((ex) => (
-                <RoutineExercise key={day.title + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]}
-                  onComplete={(e, s) => completeExercise(e, s, false)} />
+                <RoutineExercise key={day.title + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]?.sets}
+                  pts={sharePts} onComplete={(e, s) => completeExercise(e, s, false)} onUncomplete={() => uncompleteExercise(ex, false)} />
               ))}
             </>
           )}
@@ -648,9 +774,9 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
         </div>
       )}
 
-      {tab === 'progress' && <Progress history={history} />}
+      {tab === 'progress' && <Progress history={history} cardio={cardioLogs} users={users} uid={uid} />}
 
-      {tab === 'cardio' && <Cardio users={users} uid={uid} actions={actions} workouts={workouts} onSaved={flash} />}
+      {tab === 'cardio' && <Cardio users={users} uid={uid} actions={actions} logs={cardioLogs} reload={reloadCardio} onSaved={flash} />}
 
       {tab === 'timer' && <TimerTool />}
     </section>

@@ -192,23 +192,37 @@ export function useAppData() {
     return true;
   }
 
-  // Si el hábito es "compartido" y hoy ya lo cumplieron los dos usuarios,
-  // activa un multiplicador x2 por 24hs (una sola vez por día, por hábito).
+  // Hábito compartido: si HOY lo cumplen los dos, los puntos de ambos se duplican (x2).
+  // Una sola vez por día y por hábito (la marca queda en shared_bonus_log).
+  const isHabitDone = (habit, e) => (habit.kind === 'quantity' ? (e.amount || 0) >= habit.target : e.points > 0);
+
   async function checkSharedHabitBonus(habit, fresh) {
-    if (!habit?.shared || !fresh) return false;
-    const { habitLogs: freshLogs } = fresh;
+    if (!habit?.shared || !fresh || users.length < 2) return false;
     const tk = dateKey(today());
-    const allDone = users.every((u) =>
-      freshLogs.some((e) => e.habit_id === habit.id && e.user_id === u.id && e.log_date === tk && e.points > 0)
-    );
-    if (!allDone) return false;
+    const logs = fresh.habitLogs.filter((e) => e.habit_id === habit.id && e.log_date === tk && isHabitDone(habit, e));
+    if (!users.every((usr) => logs.some((e) => e.user_id === usr.id))) return false;
     const { error: insErr } = await supabase.from('shared_bonus_log').insert([{ habit_id: habit.id, log_date: tk }]);
-    if (insErr) return false; // ya se había activado hoy
-    const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-    await supabase.from('active_multipliers').insert([
-      { multiplier: 2, source: `Hábito compartido: ${habit.name}`, expires_at: expiresAt }
-    ]);
+    if (insErr) return false; // ya estaba duplicado hoy
+    await Promise.all(
+      logs.map((e) => supabase.from('habit_logs').update({ points: e.points * 2 }).eq('id', e.id))
+    );
     return true;
+  }
+
+  const hasSharedMark = async (habit, key) => {
+    if (!habit?.shared) return false;
+    const { data } = await supabase.from('shared_bonus_log').select('habit_id').eq('habit_id', habit.id).eq('log_date', key);
+    return !!(data && data.length);
+  };
+
+  // Si alguien deja de cumplir, se quita el x2 al otro usuario.
+  async function undoSharedDouble(habit, key, exceptUserId) {
+    if (!(await hasSharedMark(habit, key))) return;
+    await supabase.from('shared_bonus_log').delete().eq('habit_id', habit.id).eq('log_date', key);
+    const { data: logs } = await supabase
+      .from('habit_logs').select('id,points')
+      .eq('habit_id', habit.id).eq('log_date', key).neq('user_id', exceptUserId).gt('points', 0);
+    await Promise.all((logs || []).map((e) => supabase.from('habit_logs').update({ points: Math.round(e.points / 2) }).eq('id', e.id)));
   }
 
   async function afterHabitAction(userId, habit) {
@@ -220,13 +234,23 @@ export function useAppData() {
 
   async function toggleHabitToday(habit, userId) {
     const key = dateKey(today());
-    const existing = habitLogs.find(
-      (e) => e.habit_id === habit.id && e.user_id === userId && e.log_date === key
-    );
+    // Se consulta la base (no el estado) para no actuar sobre datos viejos.
+    const { data: fresh0 } = await supabase
+      .from('habit_logs').select('id,points')
+      .eq('habit_id', habit.id).eq('user_id', userId).eq('log_date', key).limit(1);
+    const existing = fresh0 && fresh0[0];
     if (existing && existing.points > 0) {
       await supabase.from('habit_logs').delete().eq('id', existing.id);
+      await undoSharedDouble(habit, key, userId);
     } else {
-      const points = Math.round(habit.points * currentMultiplier);
+      let points = Math.round(habit.points * currentMultiplier);
+      if (habit.type === 'gym') {
+        // Los ejercicios ya completados hoy cuentan: el total del día nunca supera el valor del hábito.
+        const { data: tp } = await supabase
+          .from('training_points').select('points').eq('user_id', userId).eq('log_date', key).like('kind', 'ex_%');
+        const got = (tp || []).reduce((s, r) => s + r.points, 0);
+        points = Math.max(1, points - got);
+      }
       await supabase.from('habit_logs').upsert(
         [{ habit_id: habit.id, user_id: userId, log_date: key, points, amount: null }],
         { onConflict: 'habit_id,user_id,log_date' }
@@ -242,15 +266,19 @@ export function useAppData() {
     );
     const current = existing?.amount || 0;
     const next = Math.max(0, current + delta);
+    const marked = await hasSharedMark(habit, key);
     if (next <= 0) {
       if (existing) await supabase.from('habit_logs').delete().eq('id', existing.id);
+      if (marked) await undoSharedDouble(habit, key, userId);
     } else {
       const basePts = Math.round(habit.points * Math.min(1, next / habit.target));
-      const pts = Math.round(basePts * currentMultiplier);
+      let pts = Math.round(basePts * currentMultiplier);
+      if (marked && next >= habit.target) pts *= 2;
       await supabase.from('habit_logs').upsert(
         [{ habit_id: habit.id, user_id: userId, log_date: key, points: pts, amount: next }],
         { onConflict: 'habit_id,user_id,log_date' }
       );
+      if (marked && next < habit.target) await undoSharedDouble(habit, key, userId);
     }
     await afterHabitAction(userId, habit);
   }
@@ -274,7 +302,7 @@ export function useAppData() {
     await supabase.from('workouts').insert([
       { user_id: userId, type: 'strength', exercise_name: exercise, sets }
     ]);
-    await autoCompleteHabitByType('gym', userId);
+    // El hábito de ejercicio se completa desde Training al terminar la rutina (o a mano).
     const habit = habits.find((h) => h.type === 'gym');
     await afterHabitAction(userId, habit);
   }
@@ -293,13 +321,7 @@ export function useAppData() {
     await supabase.from('redemptions').insert([
       { reward_id: reward.id, redeemed_by: userId, points_spent: reward.cost_points }
     ]);
-    if (reward.kind === 'multiplier' && reward.multiplier_value) {
-      const hours = reward.multiplier_hours || 24;
-      const expiresAt = new Date(Date.now() + hours * 3600 * 1000).toISOString();
-      await supabase.from('active_multipliers').insert([
-        { multiplier: reward.multiplier_value, source: reward.name, expires_at: expiresAt }
-      ]);
-    }
+    // El canje queda guardado en "Mis comodines"; los multiplicadores se activan al usarlos (Shop).
     fetchAll();
   }
 
@@ -331,6 +353,19 @@ export function useAppData() {
   async function updateHabit(habitId, patch) {
     await supabase.from('habits').update(patch).eq('id', habitId);
     fetchAll();
+  }
+
+  // Adelantar: cumplir hoy el hábito de un día próximo de esta semana.
+  async function advanceHabit(habit, userId, date) {
+    const key = dateKey(date);
+    const exists = habitLogs.some((e) => e.habit_id === habit.id && e.user_id === userId && e.log_date === key);
+    if (exists || habit.kind !== 'boolean') return;
+    const points = Math.round(habit.points * currentMultiplier);
+    await supabase.from('habit_logs').upsert(
+      [{ habit_id: habit.id, user_id: userId, log_date: key, points, amount: null }],
+      { onConflict: 'habit_id,user_id,log_date', ignoreDuplicates: true }
+    );
+    await afterHabitAction(userId, habit);
   }
 
   async function recoverHabitDay(entry, habit) {
@@ -394,6 +429,7 @@ export function useAppData() {
       updateReward,
       updateHabit,
       recoverHabitDay,
+      advanceHabit,
       setGoal,
       clearGoal,
       resetAllProgress

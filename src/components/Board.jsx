@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CAL_DOW_LABELS } from '../lib/dates';
+import { userKey } from '../lib/theme';
 import { dayAggregateStatus, pool, todayFor, currentStreak } from '../lib/logic';
 
 function userName(users, uid) {
@@ -244,7 +245,7 @@ export default function Board({ users, habits, habitLogs, bonusLogs, workouts, r
           feed.map((f, i) => (
             <div className="feed-item" key={i}>
               <div className="feed-dot" style={{ background: f.sign === 'minus' ? 'var(--coral)' : 'var(--amber)' }} />
-              <span className="who">{userName(users, f.who)}</span>&nbsp;{f.text}
+              <span className="who" data-user={userKey(users, f.who)}>{userName(users, f.who)}</span>&nbsp;{f.text}
               {f.pts !== null && (
                 <span className={'pts ' + f.sign}>
                   {f.sign === 'minus' ? '-' : '+'}
