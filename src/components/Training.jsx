@@ -389,7 +389,7 @@ function Cardio({ users, uid, actions, logs, reload, onSaved }) {
   const [min, setMin] = useState(30);
   const [km, setKm] = useState('');
   const [filter, setFilter] = useState(uid);
-  const [logs, setLogs] = useState([]);
+  const [cardioLogs, setCardioLogs] = useState([]);
   const [saving, setSaving] = useState(false);
 
   const current = ACTIVITIES.find((a) => a.id === act);
