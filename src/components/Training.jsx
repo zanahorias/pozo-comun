@@ -148,11 +148,17 @@ function useHistory(userId, workouts) {
 
 // Registros de cardio (de todos) compartidos por la pestaña Cardio y Progreso.
 function useCardioLogs(workouts) {
+  const [logs, setLogs] = useState([]);
+
   const load = useCallback(async () => {
-    const { data } = await supabase.from('workouts').select('*').eq('type', 'cardio').order('created_at', { ascending: false }).limit(500);
-    setLogs(data || []);
+    const { data } = await supabase
+      .from('workouts')
+      .select('*')
+      .eq('type', 'cardio')
+      .order('created_at', { ascending: false });
+    if (data) setLogs(data);
   }, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   useEffect(() => { load(); }, [load, workouts]);
   return [logs, load];
 }
