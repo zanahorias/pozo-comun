@@ -225,11 +225,26 @@ export function useAppData() {
     await Promise.all((logs || []).map((e) => supabase.from('habit_logs').update({ points: Math.round(e.points / 2) }).eq('id', e.id)));
   }
 
+  // Si el día deja de ser perfecto (desmarcaste algo), se quitan los bonos del día:
+  // así marcar y desmarcar suman y restan exactamente lo mismo.
+  async function revokeBonusesIfNeeded(userId, fresh) {
+    if (!fresh) return false;
+    const t = today();
+    if (isPerfectDay(fresh.habits, t, userId, fresh.habitLogs, fresh.trackingStartDate)) return false;
+    const { data } = await supabase
+      .from('bonus_logs').select('id')
+      .eq('user_id', userId).eq('log_date', dateKey(t)).in('kind', ['perfect_day', 'streak3', 'streak7']);
+    if (!data || !data.length) return false;
+    await supabase.from('bonus_logs').delete().in('id', data.map((x) => x.id));
+    return true;
+  }
+
   async function afterHabitAction(userId, habit) {
     const fresh = await fetchAll();
     const a = await awardBonusesIfNeeded(userId, fresh);
     const b = habit ? await checkSharedHabitBonus(habit, fresh) : false;
-    if (a || b) fetchAll();
+    const c = await revokeBonusesIfNeeded(userId, fresh);
+    if (a || b || c) fetchAll();
   }
 
   async function toggleHabitToday(habit, userId) {
@@ -355,19 +370,6 @@ export function useAppData() {
     fetchAll();
   }
 
-  // Adelantar: cumplir hoy el hábito de un día próximo de esta semana.
-  async function advanceHabit(habit, userId, date) {
-    const key = dateKey(date);
-    const exists = habitLogs.some((e) => e.habit_id === habit.id && e.user_id === userId && e.log_date === key);
-    if (exists || habit.kind !== 'boolean') return;
-    const points = Math.round(habit.points * currentMultiplier);
-    await supabase.from('habit_logs').upsert(
-      [{ habit_id: habit.id, user_id: userId, log_date: key, points, amount: null }],
-      { onConflict: 'habit_id,user_id,log_date', ignoreDuplicates: true }
-    );
-    await afterHabitAction(userId, habit);
-  }
-
   async function recoverHabitDay(entry, habit) {
     await supabase.from('habit_logs').update({ points: habit.points, amount: null }).eq('id', entry.id);
     fetchAll();
@@ -429,7 +431,6 @@ export function useAppData() {
       updateReward,
       updateHabit,
       recoverHabitDay,
-      advanceHabit,
       setGoal,
       clearGoal,
       resetAllProgress

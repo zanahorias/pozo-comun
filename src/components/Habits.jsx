@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CAL_DOW_LABELS, DOW_LABELS, dateKey, mondayOfWeek, today } from '../lib/dates';
 import {
   habitDayStatus, findRecoverableMiss, findJokerTarget, parseReward,
-  incompleteToday, nextReminder, habitLabel, findAdvanceTarget
+  incompleteToday, nextReminder, habitLabel, findAdvanceTarget, jokerState
 } from '../lib/logic';
 import { supabase } from '../lib/supabase';
-import { habitDays } from '../lib/commitments';
+import { habitDays, isScheduled, moveHabitDay } from '../lib/commitments';
 import '../theme-q4.css';
 
 const DEFAULT_NEW_POINTS = 5;
@@ -64,24 +64,23 @@ export function useHabitReminders(habits, habitLogs, userId, trackingStartDate) 
   }, [userId]);
 }
 
-// Comodines disponibles = comodines canjeados por el usuario − comodines usados
-// (logs con 0 puntos). Se consulta el historial completo.
+// Comodines disponibles = canjeados − usados (redemption_uses). Cuando se usa uno,
+// desaparece de "Mis comodines" en la tienda.
 function useJokerBalance(userId, deps) {
-  const [count, setCount] = useState(0);
+  const [state, setState] = useState({ available: 0, nextToUse: null });
   const refresh = useCallback(async () => {
-    const [rw, rd, used] = await Promise.all([
+    const [rw, rd, us, zero] = await Promise.all([
       supabase.from('rewards').select('id,name,description'),
-      supabase.from('redemptions').select('reward_id').eq('redeemed_by', userId),
+      supabase.from('redemptions').select('id,reward_id,redeemed_by,created_at').eq('redeemed_by', userId),
+      supabase.from('redemption_uses').select('redemption_id'),
       supabase.from('habit_logs').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('points', 0)
     ]);
-    if (rw.error || rd.error || used.error) return;
-    const jokerIds = new Set((rw.data || []).filter((r) => parseReward(r).isJoker).map((r) => r.id));
-    const bought = (rd.data || []).filter((r) => jokerIds.has(r.reward_id)).length;
-    setCount(Math.max(0, bought - (used.count || 0)));
+    if (rw.error || rd.error || zero.error) return;
+    setState(jokerState(rw.data || [], rd.data || [], us.error ? [] : us.data || [], userId, zero.count || 0));
   }, [userId]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refresh(); }, [refresh, ...deps]);
-  return [count, refresh];
+  return [state.available, refresh, state.nextToUse];
 }
 
 function WeekStrip({ habit, currentUser, habitLogs, trackingStartDate }) {
@@ -95,7 +94,7 @@ function WeekStrip({ habit, currentUser, habitLogs, trackingStartDate }) {
   return (
     <div className="week-strip">
       {cells.map((c, i) => (
-        <div className={'week-dot ' + c.s} key={i}>{c.s === 'done' ? '■' : c.s === 'missed' ? '✕' : c.s === 'partial' ? '◪' : CAL_DOW_LABELS[i]}</div>
+        <div className={'week-dot ' + c.s} key={i}><span>{CAL_DOW_LABELS[i]}</span></div>
       ))}
     </div>
   );
@@ -245,10 +244,11 @@ function HabitEditForm({ habit, isAdmin, onSave, onCancel }) {
   );
 }
 
-export default function Habits({ onEditCommitments, habits, habitLogs, currentUser, isAdmin, actions, trackingStartDate }) {
+export default function Habits({ onEditCommitments, currentMultiplier = 1, habits, habitLogs, currentUser, isAdmin, actions, trackingStartDate }) {
   const t = today();
   const [editingId, setEditingId] = useState(null);
-  const [jokers, refreshJokers] = useJokerBalance(currentUser.id, [habitLogs]);
+  const [jokers, refreshJokers, nextJoker] = useJokerBalance(currentUser.id, [habitLogs]);
+  const mult = currentMultiplier || 1;
   useHabitReminders(habits, habitLogs, currentUser.id, trackingStartDate);
 
   // Comodín: cuenta como cumplido (0 pts) y no rompe la racha.
@@ -262,14 +262,17 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
           [{ habit_id: habit.id, user_id: currentUser.id, log_date: dateKey(t), points: 0, amount }],
           { onConflict: 'habit_id,user_id,log_date' }
         );
-    if (error) window.alert('No se pudo usar el comodín.');
+    if (error) { window.alert('No se pudo usar el comodín.'); return; }
+    // Se descuenta de "Mis comodines" (para vos y, si fuera compartido, para los dos).
+    if (nextJoker) await supabase.from('redemption_uses').insert([{ redemption_id: nextJoker.id, user_id: currentUser.id }]);
     refreshJokers();
   }
 
-  // Adelantar: cumple hoy el hábito de un día próximo de esta semana.
-  function advance(habit, date) {
-    if (!window.confirm(`¿Adelantar "${habitLabel(habit)}" del ${DAY_NAMES[date.getDay()]}? Suma sus puntos ahora y ese día ya queda cumplido.`)) return;
-    actions.advanceHabit(habit, currentUser.id, date);
+  // Adelantar: cambia de día el hábito. El día futuro deja de corresponder y hoy pasa a ser
+  // su día (queda pendiente: lo marcás vos como cualquier otro).
+  async function advance(habit, date) {
+    if (!window.confirm(`¿Mover "${habitLabel(habit)}" del ${DAY_NAMES[date.getDay()]} a hoy? Hoy pasa a ser su día y el ${DAY_NAMES[date.getDay()]} deja de corresponder.`)) return;
+    await moveHabitDay(currentUser.id, habit.id, dateKey(date), dateKey(t));
   }
 
   // Recuperar: se valida de nuevo al hacer click (el día en curso nunca se toca).
@@ -305,7 +308,7 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
         }
 
         const myDays = habitDays(h, currentUser.id, t);
-        const scheduledToday = myDays.includes(t.getDay());
+        const scheduledToday = isScheduled(h, currentUser.id, t);
         const dayLabels = myDays.length === 7 ? 'Todos los días' : myDays.slice().sort().map((d) => DOW_LABELS[d]).join(' ');
 
         if (h.kind === 'quantity') {
@@ -322,7 +325,7 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
                   <div className="hmeta">{dayLabels} · meta {h.target} {h.unit}/día</div>
                 </div>
                 {scheduledToday && <StatusTag status={habitDayStatus(h, t, currentUser.id, habitLogs, trackingStartDate)} />}
-                <div className="habit-pts">hasta +{h.points}</div>
+                <div className="habit-pts">hasta +{Math.round(h.points * mult)}</div>
                 <button className="rm" style={{ color: 'var(--court-light)' }} onClick={() => setEditingId(h.id)}>✎</button>
                 {isAdmin && (
                   <button className="rm" onClick={() => window.confirm(`¿Eliminar "${habitLabel(h)}"?`) && actions.deleteHabit(h.id)}>✕</button>
@@ -367,7 +370,7 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
                 <div className="hmeta">{dayLabels}{scheduledToday ? '' : ' · no corresponde hoy'}</div>
               </div>
               {scheduledToday && <StatusTag status={status} />}
-              <div className="habit-pts">+{h.points}</div>
+              <div className="habit-pts">+{Math.round(h.points * mult)}{h.shared ? ' · x2 si ambos' : ''}</div>
               <button className="rm" style={{ color: 'var(--court-light)' }} onClick={() => setEditingId(h.id)}>✎</button>
               {isAdmin && (
                 <button className="rm" onClick={() => window.confirm(`¿Eliminar "${habitLabel(h)}"?`) && actions.deleteHabit(h.id)}>✕</button>
@@ -381,8 +384,8 @@ export default function Habits({ onEditCommitments, habits, habitLogs, currentUs
             )}
             {advanceDate && (
               <div className="recover-row">
-                <span>{status === 'done' ? 'Ya cumpliste hoy.' : 'Hoy no corresponde.'} ¿Querés adelantar el del {DAY_NAMES[advanceDate.getDay()]}?</span>
-                <button className="btn btn-ghost btn-small" onClick={() => advance(h, advanceDate)}>⏩ Adelantar</button>
+                <span>Hoy no corresponde. ¿Querés pasar el del {DAY_NAMES[advanceDate.getDay()]} a hoy?</span>
+                <button className="btn btn-ghost btn-small" onClick={() => advance(h, advanceDate)}>⏩ Mover a hoy</button>
               </div>
             )}
             {jokers > 0 && (status === 'pending' || jokerTarget) && (

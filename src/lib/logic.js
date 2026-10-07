@@ -1,5 +1,5 @@
 import { stripTime, dateKey, today, mondayOfWeek, effectiveNow } from './dates';
-import { habitDays } from './commitments';
+import { habitDays, isScheduled } from './commitments';
 
 function effectiveStart(habit, trackingStartDate) {
   const habitStart = habit.created_at ? stripTime(new Date(habit.created_at)) : null;
@@ -9,7 +9,7 @@ function effectiveStart(habit, trackingStartDate) {
 }
 
 export function habitDayStatus(habit, dateObj, uid, habitLogs, trackingStartDate) {
-  if (!habitDays(habit, uid, dateObj).includes(dateObj.getDay())) return 'none';
+  if (!isScheduled(habit, uid, dateObj)) return 'none';
   const d = stripTime(dateObj);
   const t = today();
   const key = dateKey(d);
@@ -33,7 +33,7 @@ export function habitDayStatus(habit, dateObj, uid, habitLogs, trackingStartDate
 // no se cumplió NINGUNO. "Cumplido" cuenta tanto 'done' como 'partial' (algo
 // de progreso en un hábito por cantidad ya es mejor que nada).
 export function dayAggregateStatus(habits, dateObj, uid, habitLogs, trackingStartDate) {
-  const scheduled = habits.filter((h) => habitDays(h, uid, dateObj).includes(dateObj.getDay()));
+  const scheduled = habits.filter((h) => isScheduled(h, uid, dateObj));
   const relevant = scheduled.filter(
     (h) => habitDayStatus(h, dateObj, uid, habitLogs, trackingStartDate) !== 'none'
   );
@@ -214,7 +214,7 @@ export function computeMissingRows(habits, users, habitLogs, trackingStartDate) 
     users.forEach((u) => {
       let d = new Date(rangeStart);
       while (d < t) {
-        if (habitDays(habit, u.id, d).includes(d.getDay())) {
+        if (isScheduled(habit, u.id, d)) {
           const key = dateKey(d);
           const exists = habitLogs.some(
             (e) => e.habit_id === habit.id && e.user_id === u.id && e.log_date === key
@@ -244,7 +244,7 @@ export function computeMissingRows(habits, users, habitLogs, trackingStartDate) 
 export function findRecoverableMiss(habit, uid, habitLogs, trackingStartDate) {
   if (habit.kind !== 'boolean') return null;
   const t = today();
-  if (habitDays(habit, uid, t).includes(t.getDay())) return null;
+  if (isScheduled(habit, uid, t)) return null;
   const monday = mondayOfWeek(t);
   let d = new Date(monday);
   while (d < t) {
@@ -311,7 +311,7 @@ export function nextReminder(now = new Date()) {
 // quedaron en estado 'done' para ese usuario. Si no había ningún hábito
 // programado y relevante ese día, no cuenta como perfecto ni como roto.
 export function isPerfectDay(habits, dateObj, uid, habitLogs, trackingStartDate) {
-  const scheduled = habits.filter((h) => habitDays(h, uid, dateObj).includes(dateObj.getDay()));
+  const scheduled = habits.filter((h) => isScheduled(h, uid, dateObj));
   const relevant = scheduled.filter(
     (h) => habitDayStatus(h, dateObj, uid, habitLogs, trackingStartDate) !== 'none'
   );
@@ -335,17 +335,12 @@ export function currentStreak(habits, uid, habitLogs, trackingStartDate) {
 
 // --- Adelantar hábitos -------------------------------------------------------
 
-// Próximo día de esta semana en que corresponde el hábito y todavía no está
-// cumplido. Solo se ofrece si hoy no corresponde o hoy ya está cumplido, y si no
-// hay otro día adelantado pendiente.
+// Si hoy NO corresponde el hábito, devuelve el próximo día de esta semana en que sí
+// corresponde y todavía no está registrado: ese día se puede mover a hoy.
 export function findAdvanceTarget(habit, uid, habitLogs, trackingStartDate) {
   if (habit.kind !== 'boolean') return null;
   const t = today();
-  const todayStatus = habitDayStatus(habit, t, uid, habitLogs, trackingStartDate);
-  if (todayStatus === 'pending' || todayStatus === 'partial' || todayStatus === 'missed') return null;
-  const tk = dateKey(t);
-  const pendingAdvance = habitLogs.some((e) => e.habit_id === habit.id && e.user_id === uid && e.log_date > tk);
-  if (pendingAdvance) return null;
+  if (isScheduled(habit, uid, t)) return null;
   const end = new Date(mondayOfWeek(t));
   end.setDate(end.getDate() + 6);
   let d = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
@@ -354,4 +349,18 @@ export function findAdvanceTarget(habit, uid, habitLogs, trackingStartDate) {
     d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
   }
   return null;
+}
+
+// --- Comodines de descanso (se descuentan con redemption_uses) ---------------
+
+// Disponibles = comodines canjeados − usados. `zeroLogs` (logs con 0 pts) cubre usos viejos.
+export function jokerState(rewards, redemptions, uses, uid, zeroLogs = 0) {
+  const usedIds = new Set((uses || []).map((u) => u.redemption_id));
+  const mine = redemptions.filter((r) => {
+    const rw = rewards.find((x) => x.id === r.reward_id);
+    return rw && r.redeemed_by === uid && parseReward(rw).isJoker;
+  });
+  const usedCount = Math.max(mine.filter((r) => usedIds.has(r.id)).length, zeroLogs);
+  const unused = mine.filter((r) => !usedIds.has(r.id)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  return { available: Math.max(0, mine.length - usedCount), nextToUse: unused[0] || null };
 }

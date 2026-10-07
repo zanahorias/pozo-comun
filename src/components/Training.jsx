@@ -149,16 +149,11 @@ function useHistory(userId, workouts) {
 // Registros de cardio (de todos) compartidos por la pestaña Cardio y Progreso.
 function useCardioLogs(workouts) {
   const [logs, setLogs] = useState([]);
-
   const load = useCallback(async () => {
-    const { data } = await supabase
-      .from('workouts')
-      .select('*')
-      .eq('type', 'cardio')
-      .order('created_at', { ascending: false });
-    if (data) setLogs(data);
+    const { data } = await supabase.from('workouts').select('*').eq('type', 'cardio').order('created_at', { ascending: false }).limit(500);
+    setLogs(data || []);
   }, []);
-
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load, workouts]);
   return [logs, load];
 }
@@ -187,7 +182,7 @@ function useDoneToday(userId) {
 // ---------------------------------------------------------------------------
 // Tarjeta de ejercicio (se achica al completarlo)
 // ---------------------------------------------------------------------------
-function RoutineExercise({ ex, uid, lastSets, doneSets, pts, onComplete, onUncomplete }) {
+function RoutineExercise({ ex, uid, lastSets, doneSets, pts, noPtsReason = '', onComplete, onUncomplete }) {
   const spec = parseSpec(ex.spec);
   const build = () =>
     Array.from({ length: spec.sets }, (_, i) => {
@@ -247,7 +242,7 @@ function RoutineExercise({ ex, uid, lastSets, doneSets, pts, onComplete, onUncom
         </div>
       ))}
       <button className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={saving} onClick={complete}>
-        {saving ? 'Guardando…' : doneSets ? 'Actualizar series (sin puntos extra)' : `Ejercicio completado${pts ? `  (+${pts} pts)` : ''}`}
+        {saving ? 'Guardando…' : doneSets ? 'Actualizar series (sin puntos extra)' : `Ejercicio completado${pts ? `  (+${pts} pts)` : noPtsReason ? ` · sin puntos: ${noPtsReason}` : ''}`}
       </button>
       {doneSets && (
         <button className="btn btn-ghost" style={{ width: '100%', marginTop: 6, color: 'var(--coral)', borderColor: 'var(--coral)' }} onClick={onUncomplete}>
@@ -390,17 +385,15 @@ function paceText(act, min, km) {
   return act.pace ? `${(min / km).toFixed(1)} min/km` : `${(km / (min / 60)).toFixed(1)} km/h`;
 }
 
-function Cardio({ users, uid, actions, logs=[], reload, onSaved }) {
+function Cardio({ users, uid, actions, logs, reload, onSaved }) {
   const [act, setAct] = useState('Trote');
   const [min, setMin] = useState(30);
   const [km, setKm] = useState('');
   const [filter, setFilter] = useState(uid);
-  const [cardioLogs, setCardioLogs] = useState([]);
   const [saving, setSaving] = useState(false);
 
   const current = ACTIVITIES.find((a) => a.id === act);
-  const list = logs || [];
-  const shown = filter === 'all' ? list : list.filter((w) => w.user_id === filter);
+  const shown = filter === 'all' ? logs : logs.filter((w) => w.user_id === filter);
 
   async function save() {
     const m = Number(min) || 0;
@@ -601,7 +594,17 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
 
   const gymHabit = habits.find((h) => h.type === 'gym');
   const fullPts = gymHabit ? Math.round(gymHabit.points * (currentMultiplier || 1)) : 0;
+  const todayKey = dateKey(today());
+  const gymDoneToday = !!gymHabit && habitLogs.some((e) => e.habit_id === gymHabit.id && e.user_id === uid && e.log_date === todayKey && e.points > 0);
+  const doneInDay = day.ex.filter((e) => doneToday[e.name]).length;
   const sharePts = gymHabit ? Math.floor((fullPts * EXERCISE_SHARE) / Math.max(1, day.ex.length)) : FALLBACK_PTS;
+
+  // Puntos que realmente suma completar este ejercicio ahora (el último incluye el resto del hábito).
+  const ptsFor = (ex) => {
+    if (gymDoneToday || !gymHabit) return gymHabit ? 0 : sharePts;
+    const pending = day.ex.length - doneInDay;
+    return pending === 1 && !doneToday[ex.name] ? Math.max(1, fullPts - sharePts * doneInDay) : sharePts;
+  };
 
   // Suma puntos una sola vez por ejercicio y día (verifica antes de insertar).
   async function award(kind, points) {
@@ -663,7 +666,10 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
       const { data: mk } = await supabase.from('training_points').select('id').eq('user_id', uid).eq('log_date', key).eq('kind', 'routine_done');
       if (mk && mk.length) {
         await supabase.from('training_points').delete().eq('user_id', uid).eq('log_date', key).eq('kind', 'routine_done');
-        if (gymHabit) await supabase.from('habit_logs').delete().eq('habit_id', gymHabit.id).eq('user_id', uid).eq('log_date', key);
+        if (gymHabit) {
+          const { data: hl } = await supabase.from('habit_logs').select('points').eq('habit_id', gymHabit.id).eq('user_id', uid).eq('log_date', key).limit(1);
+          if (hl && hl[0] && hl[0].points > 0) await actions.toggleHabitToday(gymHabit, uid); // lo desmarca y revierte bonos
+        }
       }
     }
     await refreshDone();
@@ -765,14 +771,14 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
                   <div className="flabel" style={{ marginTop: 6 }}>🦶 Bloque fijo de tobillo (pre-rutina)</div>
                   {routine.pre.map((ex) => (
                     <RoutineExercise key={'pre-' + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]?.sets}
-                      pts={0} onComplete={(e, s) => completeExercise(e, s, true)} onUncomplete={() => uncompleteExercise(ex, true)} />
+                      pts={0} noPtsReason="calentamiento" onComplete={(e, s) => completeExercise(e, s, true)} onUncomplete={() => uncompleteExercise(ex, true)} />
                   ))}
                   <div className="flabel" style={{ marginTop: 14 }}>Rutina</div>
                 </>
               )}
               {day.ex.map((ex) => (
                 <RoutineExercise key={day.title + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]?.sets}
-                  pts={sharePts} onComplete={(e, s) => completeExercise(e, s, false)} onUncomplete={() => uncompleteExercise(ex, false)} />
+                  pts={ptsFor(ex)} noPtsReason={gymDoneToday ? 'el hábito ya está completo' : ''} onComplete={(e, s) => completeExercise(e, s, false)} onUncomplete={() => uncompleteExercise(ex, false)} />
               ))}
             </>
           )}

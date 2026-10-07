@@ -25,6 +25,9 @@ export default function App() {
   const [screen, setScreen] = useState('board');
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [editCommit, setEditCommit] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinValue, setPinValue] = useState('');
+  const [pinError, setPinError] = useState('');
   const commitVersion = useCommitments(); // carga y re-renderiza cuando cambian los compromisos
 
   useEffect(() => {
@@ -75,17 +78,25 @@ export default function App() {
     );
   }
 
+  // PIN en un cuadro propio (window.prompt no funciona en la app de Android).
   function handleToggleAdmin() {
     if (isAdminMode) {
       setIsAdminMode(false);
       return;
     }
-    const pin = window.prompt('PIN de administrador:');
-    if (pin === null) return;
+    setPinValue('');
+    setPinError('');
+    setPinOpen(true);
+  }
+
+  function submitPin() {
+    const pin = pinValue.trim();
     if (pin === "1234" || (adminPin && pin === adminPin)) {
       setIsAdminMode(true);
+      setPinOpen(false);
+      setPinValue('');
     } else {
-      window.alert('PIN incorrecto.');
+      setPinError('PIN incorrecto.');
     }
   }
 
@@ -129,6 +140,7 @@ export default function App() {
             actions={actions}
             trackingStartDate={trackingStartDate}
             onEditCommitments={() => setEditCommit(true)}
+            currentMultiplier={currentMultiplier}
           />
         )}
         {screen === 'training' && (
@@ -138,6 +150,27 @@ export default function App() {
           <Shop rewards={rewards} habitLogs={habitLogs} bonusLogs={bonusLogs} redemptions={redemptions} currentUser={currentUser} isAdmin={isAdminMode} actions={actions} />
         )}
       </main>
+      {pinOpen && (
+        <div className="pin-overlay" onClick={() => setPinOpen(false)}>
+          <div className="pin-card" onClick={(e) => e.stopPropagation()}>
+            <div className="lname">PIN de administrador</div>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              placeholder="••••"
+              value={pinValue}
+              onChange={(e) => { setPinValue(e.target.value); setPinError(''); }}
+              onKeyDown={(e) => e.key === 'Enter' && submitPin()}
+            />
+            {pinError && <div className="hmeta" style={{ color: 'var(--coral)' }}>{pinError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={submitPin}>Entrar</button>
+              <button className="btn btn-ghost" onClick={() => setPinOpen(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
       <PointsFx userId={currentUser.id} total={userTotals?.[currentUser.id]} />
       <TabBar screen={screen} onChange={setScreen} />
     </div>

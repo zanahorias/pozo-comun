@@ -165,3 +165,40 @@ body[data-user] .btn-primary { background: var(--court); color: #0B0C14; }
 .act-sum-item { display: flex; justify-content: space-between; font-size: 12.5px; }
 .act-sum-item b { font-weight: 700; color: var(--court); }
 .subtabs button { white-space: nowrap; }
+
+/* ===== Calendario gráfico: la caja entera cambia ===== */
+:root { --cal-green: #12B886; --cal-red: #E5333F; --cal-yellow: #F5B21B; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cal-green: #2EE6A6; --cal-red: #FF4D5A; --cal-yellow: #FFC247; } }
+
+.cal-day { position: relative; overflow: hidden; border-radius: 8px; padding: 0; }
+.cal-day .cal-num { position: absolute; top: 3px; left: 5px; font-size: 10px; font-weight: 800; line-height: 1; z-index: 1; }
+.cal-day .cal-glyph { display: none; }
+.cal-day.done { background: var(--cal-green) !important; border: 0; }
+.cal-day.done .cal-num { color: #04261B; }
+.cal-day.partial { background: var(--cal-yellow) !important; border: 0; }
+.cal-day.partial .cal-num { color: #3A2600; }
+.cal-day.missed {
+  border: 2px solid var(--cal-red);
+  background:
+    linear-gradient(to top right, transparent calc(50% - 1.6px), var(--cal-red) calc(50% - 1.6px), var(--cal-red) calc(50% + 1.6px), transparent calc(50% + 1.6px)),
+    linear-gradient(to bottom right, transparent calc(50% - 1.6px), var(--cal-red) calc(50% - 1.6px), var(--cal-red) calc(50% + 1.6px), transparent calc(50% + 1.6px)) !important;
+}
+.cal-day.missed .cal-num { color: var(--cal-red); }
+.lg-done { color: var(--cal-green); } .lg-partial { color: var(--cal-yellow); } .lg-missed { color: var(--cal-red); }
+
+/* Tira semanal de cada hábito: mismas cajas llenas */
+.week-dot { position: relative; overflow: hidden; }
+.week-dot.done { background: var(--cal-green); border-color: var(--cal-green); color: #04261B; }
+.week-dot.partial { background: var(--cal-yellow); border-color: var(--cal-yellow); color: #3A2600; }
+.week-dot.missed {
+  border: 2px solid var(--cal-red); color: var(--cal-red);
+  background:
+    linear-gradient(to top right, transparent calc(50% - 1.4px), var(--cal-red) calc(50% - 1.4px), var(--cal-red) calc(50% + 1.4px), transparent calc(50% + 1.4px)),
+    linear-gradient(to bottom right, transparent calc(50% - 1.4px), var(--cal-red) calc(50% - 1.4px), var(--cal-red) calc(50% + 1.4px), transparent calc(50% + 1.4px));
+}
+.week-dot span { position: relative; z-index: 1; font-weight: 800; font-size: 10px; }
+
+/* ===== PIN admin ===== */
+.pin-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.pin-card { width: 100%; max-width: 320px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.pin-card input { font-size: 22px; letter-spacing: .3em; text-align: center; }

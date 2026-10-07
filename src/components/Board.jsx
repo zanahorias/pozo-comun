@@ -113,11 +113,9 @@ function GoalCard({ currentGoal, goalProgress, isAdmin, actions }) {
 
 // Día del calendario: ✕ rojo si no se cumplió, ■ verde si sí, ◪ amarillo si fue parcial.
 function CalDay({ date, status }) {
-  const glyph = status === 'done' ? '■' : status === 'missed' ? '✕' : status === 'partial' ? '◪' : '';
   return (
     <div className={'cal-day ' + status}>
       <span className="cal-num">{date.getDate()}</span>
-      {glyph && <span className="cal-glyph">{glyph}</span>}
     </div>
   );
 }
@@ -233,7 +231,7 @@ export default function Board({ users, habits, habitLogs, bonusLogs, workouts, r
         </div>
         <div className="cal-legend">
           <span><i className="lg-done">■</i>Todos</span>
-          <span><i className="lg-partial">◪</i>Algunos</span>
+          <span><i className="lg-partial">■</i>Algunos</span>
           <span><i className="lg-missed">✕</i>Ninguno</span>
           <span><i className="lg-none">·</i>Sin hábito</span>
         </div>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   SCOPE, Q4_CATALOG, MAX_STOCK, parseReward, encodeScope,
-  individualBalance, poolBalance
+  individualBalance, poolBalance, jokerState
 } from '../lib/logic';
 import { showPoints } from '../lib/pointsFx';
 import '../theme-q4.css';
@@ -32,6 +32,15 @@ function useEconomy(deps) {
   }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refresh(); }, [refresh, ...deps]);
+  // Si el otro usa un canje (o un comodín), se actualiza solo para los dos.
+  useEffect(() => {
+    const ch = supabase.channel('shop-uses')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'redemption_uses' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'redemptions' }, refresh)
+      .subscribe();
+    const poll = setInterval(refresh, 15000);
+    return () => { supabase.removeChannel(ch); clearInterval(poll); };
+  }, [refresh]);
   return [data, refresh];
 }
 
@@ -39,12 +48,8 @@ function useEconomy(deps) {
 function computeOwned(d, uid) {
   const rewardById = (id) => d.rewards.find((r) => r.id === id);
   const used = new Set((d.uses || []).map((x) => x.redemption_id));
-  const boughtJokers = d.redemptions.filter((r) => {
-    const rw = rewardById(r.reward_id);
-    return rw && r.redeemed_by === uid && parseReward(rw).isJoker;
-  }).length;
-  const usedJokers = d.habitLogs.filter((e) => e.user_id === uid && e.points === 0).length;
-  const jokers = Math.max(0, boughtJokers - usedJokers);
+  const zeroLogs = d.habitLogs.filter((e) => e.user_id === uid && e.points === 0).length;
+  const jokers = jokerState(d.rewards, d.redemptions, d.uses, uid, zeroLogs).available;
   const vouchers = d.redemptions
     .map((r) => ({ r, rw: rewardById(r.reward_id) }))
     .filter(({ r, rw }) => {
@@ -261,7 +266,11 @@ export default function Shop({ rewards, habitLogs, bonusLogs, redemptions, curre
     setMsg('');
     try {
       const { error } = await supabase.from('redemption_uses').insert([{ redemption_id: v.r.id, user_id: currentUser.id }]);
-      if (error) { setMsg('No se pudo usar: ' + error.message); return; }
+      if (error) {
+        await refresh();
+        setMsg(error.code === '23505' ? 'Ese canje ya fue usado.' : 'No se pudo usar: ' + error.message);
+        return;
+      }
       if (v.rw.kind === 'multiplier' && v.rw.multiplier_value) {
         const expiresAt = new Date(Date.now() + (v.rw.multiplier_hours || 24) * 3600 * 1000).toISOString();
         await supabase.from('active_multipliers').insert([{ multiplier: v.rw.multiplier_value, source: v.rw.name, expires_at: expiresAt }]);
