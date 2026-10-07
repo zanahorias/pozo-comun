@@ -384,7 +384,7 @@ function paceText(act, min, km) {
   return act.pace ? `${(min / km).toFixed(1)} min/km` : `${(km / (min / 60)).toFixed(1)} km/h`;
 }
 
-function Cardio({ users, uid, actions, logs, reload, onSaved }) {
+function Cardio({ users, uid, actions, logs=[], reload, onSaved }) {
   const [act, setAct] = useState('Trote');
   const [min, setMin] = useState(30);
   const [km, setKm] = useState('');
@@ -393,7 +393,8 @@ function Cardio({ users, uid, actions, logs, reload, onSaved }) {
   const [saving, setSaving] = useState(false);
 
   const current = ACTIVITIES.find((a) => a.id === act);
-  const shown = filter === 'all' ? logs : logs.filter((w) => w.user_id === filter);
+  const list = logs || [];
+  const shown = filter === 'all' ? list : list.filter((w) => w.user_id === filter);
 
   async function save() {
     const m = Number(min) || 0;
