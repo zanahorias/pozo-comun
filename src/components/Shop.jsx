@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
-  SCOPE, Q4_CATALOG, parseReward, encodeScope,
+  SCOPE, Q4_CATALOG, MAX_STOCK, parseReward, encodeScope,
   individualBalance, poolBalance
 } from '../lib/logic';
 import { showPoints } from '../lib/pointsFx';
@@ -11,20 +11,21 @@ import '../theme-q4.css';
 function useEconomy(deps) {
   const [data, setData] = useState(null);
   const refresh = useCallback(async () => {
-    const [u, h, hl, bl, rd, rw, tp] = await Promise.all([
+    const [u, h, hl, bl, rd, rw, tp, us] = await Promise.all([
       supabase.from('users').select('id,name').order('created_at'),
       supabase.from('habits').select('id,shared,points'),
       supabase.from('habit_logs').select('habit_id,user_id,log_date,points'),
       supabase.from('bonus_logs').select('user_id,points'),
-      supabase.from('redemptions').select('reward_id,redeemed_by,points_spent'),
+      supabase.from('redemptions').select('id,reward_id,redeemed_by,points_spent,created_at'),
       supabase.from('rewards').select('*'),
-      supabase.from('training_points').select('user_id,points')
+      supabase.from('training_points').select('user_id,points'),
+      supabase.from('redemption_uses').select('redemption_id,user_id,used_at')
     ]);
     const err = [u, h, hl, bl, rd, rw].find((r) => r.error);
     if (err) { console.error(err.error); return null; }
     const next = {
       users: u.data || [], habits: h.data || [], habitLogs: hl.data || [],
-      bonusLogs: [...(bl.data || []), ...(tp.data || [])], redemptions: rd.data || [], rewards: rw.data || []
+      bonusLogs: [...(bl.data || []), ...(tp.data || [])], redemptions: rd.data || [], rewards: rw.data || [], uses: us.data || []
     };
     setData(next);
     return next;
@@ -32,6 +33,30 @@ function useEconomy(deps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refresh(); }, [refresh, ...deps]);
   return [data, refresh];
+}
+
+// Canjes guardados sin usar + comodines de descanso disponibles de un usuario.
+function computeOwned(d, uid) {
+  const rewardById = (id) => d.rewards.find((r) => r.id === id);
+  const used = new Set((d.uses || []).map((x) => x.redemption_id));
+  const boughtJokers = d.redemptions.filter((r) => {
+    const rw = rewardById(r.reward_id);
+    return rw && r.redeemed_by === uid && parseReward(rw).isJoker;
+  }).length;
+  const usedJokers = d.habitLogs.filter((e) => e.user_id === uid && e.points === 0).length;
+  const jokers = Math.max(0, boughtJokers - usedJokers);
+  const vouchers = d.redemptions
+    .map((r) => ({ r, rw: rewardById(r.reward_id) }))
+    .filter(({ r, rw }) => {
+      if (!rw || used.has(r.id)) return false;
+      const p = parseReward(rw);
+      if (p.isJoker) return false;
+      return p.scope === SCOPE.SHARED || r.redeemed_by === uid;
+    })
+    .map(({ r, rw }) => ({ r, rw, ...parseReward(rw) }))
+    .sort((a, b) => new Date(b.r.created_at) - new Date(a.r.created_at));
+  const ownedOf = (reward) => (parseReward(reward).isJoker ? jokers : vouchers.filter((v) => v.rw.id === reward.id).length);
+  return { jokers, vouchers, ownedOf };
 }
 
 function RewardCreateForm({ onAdd }) {
@@ -90,7 +115,7 @@ function RewardCreateForm({ onAdd }) {
   );
 }
 
-function RewardCard({ reward, balance, isAdmin, actions, onRedeem, busy }) {
+function RewardCard({ reward, balance, owned, isAdmin, actions, onRedeem, busy }) {
   const { scope, description } = parseReward(reward);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(reward.name);
@@ -102,6 +127,7 @@ function RewardCard({ reward, balance, isAdmin, actions, onRedeem, busy }) {
   const [multHours, setMultHours] = useState(reward.multiplier_hours || 24);
 
   const enough = balance >= reward.cost_points;
+  const capped = owned >= MAX_STOCK;
   const missing = Math.max(0, reward.cost_points - balance);
   const pct = Math.min(100, Math.round((Math.max(0, balance) / reward.cost_points) * 100));
 
@@ -159,6 +185,7 @@ function RewardCard({ reward, balance, isAdmin, actions, onRedeem, busy }) {
         )}
       </div>
       <div className="reward-name">{reward.name}</div>
+      {owned > 0 && <div className="owned-badge">✓ Ya tenés {owned} disponible{owned > 1 ? 's' : ''}</div>}
       {reward.kind === 'multiplier' && (
         <div className="reward-badge">✨ x{reward.multiplier_value} por {reward.multiplier_hours}hs</div>
       )}
@@ -171,11 +198,11 @@ function RewardCard({ reward, balance, isAdmin, actions, onRedeem, busy }) {
         </div>
       )}
       <button
-        className={'btn ' + (enough ? 'btn-primary' : 'btn-ghost')}
-        disabled={!enough || busy}
+        className={'btn ' + (enough && !capped ? 'btn-primary' : 'btn-ghost')}
+        disabled={!enough || capped || busy}
         onClick={() => onRedeem(reward, scope)}
       >
-        {enough ? 'Canjear' : 'Puntos insuficientes'}
+        {capped ? 'Ya tenés uno · usalo primero' : enough ? 'Canjear y guardar' : 'Puntos insuficientes'}
       </button>
     </div>
   );
@@ -185,10 +212,13 @@ export default function Shop({ rewards, habitLogs, bonusLogs, redemptions, curre
   const [eco, refresh] = useEconomy([habitLogs, bonusLogs, redemptions, rewards]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [tab, setTab] = useState('shop');
 
-  const data = eco || { users: [], habits: [], habitLogs, bonusLogs, redemptions, rewards };
+  const data = eco || { users: [], habits: [], habitLogs, bonusLogs, redemptions, rewards, uses: [] };
   const mine = individualBalance(currentUser.id, data.habitLogs, data.bonusLogs, data.redemptions, data.rewards);
   const shared = poolBalance(data);
+  const owned = computeOwned(data, currentUser.id);
+  const inventoryCount = owned.jokers + owned.vouchers.length;
 
   const visible = rewards.map((r) => ({ r, ...parseReward(r) })).sort((a, b) => a.r.cost_points - b.r.cost_points);
   const individuals = visible.filter((x) => x.scope === SCOPE.INDIVIDUAL);
@@ -208,12 +238,36 @@ export default function Shop({ rewards, habitLogs, bonusLogs, redemptions, curre
         setMsg(scope === SCOPE.SHARED ? 'El Pozo Común no alcanza.' : 'Tu saldo individual no alcanza.');
         return;
       }
+      if (computeOwned(fresh, currentUser.id).ownedOf(reward) >= MAX_STOCK) {
+        setMsg('Ya tenés uno disponible de esto. Usalo antes de canjear otro.');
+        return;
+      }
       const from = scope === SCOPE.SHARED ? 'del Pozo Común' : 'de tu saldo individual';
       if (!window.confirm(`¿Canjear "${reward.name}" por ${reward.cost_points} pts ${from}?`)) return;
       await actions.redeem(reward, currentUser.id);
       await refresh();
-      setMsg(`Canjeado: ${reward.name} ✓`);
+      setMsg(`Guardado en Mis comodines: ${reward.name} 🎟️ (usalo cuando quieras)`);
       showPoints(-reward.cost_points, reward.name);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Usar un canje guardado (los multiplicadores se activan recién ahora).
+  async function useVoucher(v) {
+    if (busy) return;
+    if (!window.confirm(`¿Usar "${v.rw.name}" ahora?`)) return;
+    setBusy(true);
+    setMsg('');
+    try {
+      const { error } = await supabase.from('redemption_uses').insert([{ redemption_id: v.r.id, user_id: currentUser.id }]);
+      if (error) { setMsg('No se pudo usar: ' + error.message); return; }
+      if (v.rw.kind === 'multiplier' && v.rw.multiplier_value) {
+        const expiresAt = new Date(Date.now() + (v.rw.multiplier_hours || 24) * 3600 * 1000).toISOString();
+        await supabase.from('active_multipliers').insert([{ multiplier: v.rw.multiplier_value, source: v.rw.name, expires_at: expiresAt }]);
+      }
+      await refresh();
+      setMsg(`Usaste: ${v.rw.name} ✓`);
     } finally {
       setBusy(false);
     }
@@ -248,12 +302,42 @@ export default function Shop({ rewards, habitLogs, bonusLogs, redemptions, curre
           <div className="wallet-value">{shared.toLocaleString('es-UY')}</div>
         </div>
       </div>
+      <div className="subtabs">
+        <button className={tab === 'shop' ? 'active' : ''} onClick={() => setTab('shop')}>🛍️ Tienda</button>
+        <button className={tab === 'inv' ? 'active' : ''} onClick={() => setTab('inv')}>🎟️ Mis comodines{inventoryCount ? ` (${inventoryCount})` : ''}</button>
+      </div>
       {msg && <div className="shop-msg">{msg}</div>}
 
+      {tab === 'inv' && (
+        <div>
+          {owned.jokers > 0 && (
+            <div className="log-card voucher is-individual">
+              <div className="lhead"><span className="lname">🃏 Comodín de descanso × {owned.jokers}</span><span className="tag tag-ind">Individual</span></div>
+              <div className="hmeta" style={{ margin: '4px 0 6px' }}>Se usa desde Hábitos (botón 🃏) para saltar un hábito sin perder la racha.</div>
+            </div>
+          )}
+          {owned.vouchers.map((v) => (
+            <div className={'log-card voucher ' + (v.scope === SCOPE.SHARED ? 'is-shared' : 'is-individual')} key={v.r.id}>
+              <div className="lhead">
+                <span className="lname">{v.rw.emoji} {v.rw.name}</span>
+                <span className={'tag ' + (v.scope === SCOPE.SHARED ? 'tag-pool' : 'tag-ind')}>{v.scope === SCOPE.SHARED ? 'Pozo' : 'Individual'}</span>
+              </div>
+              <div className="hmeta" style={{ margin: '4px 0 8px' }}>
+                {v.description}{v.rw.kind === 'multiplier' ? ` · activa x${v.rw.multiplier_value} por ${v.rw.multiplier_hours}hs` : ''}
+                <br />Canjeado el {new Date(v.r.created_at).toLocaleDateString('es-UY', { day: '2-digit', month: 'short' })} por {data.users.find((x) => x.id === v.r.redeemed_by)?.name || '—'}
+              </div>
+              <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy} onClick={() => useVoucher(v)}>Usar ahora</button>
+            </div>
+          ))}
+          {!inventoryCount && <div className="empty">Todavía no tenés nada guardado. Canjeá algo en la tienda y usalo cuando quieras.</div>}
+        </div>
+      )}
+
+      {tab === 'shop' && (<>
       <h3 className="shop-sub">Uso individual <span className="tag tag-ind">Puntos individuales</span></h3>
       <div className="reward-grid">
         {individuals.map(({ r }) => (
-          <RewardCard key={r.id} reward={r} balance={mine} isAdmin={isAdmin} actions={actions} onRedeem={handleRedeem} busy={busy} />
+          <RewardCard key={r.id} reward={r} balance={mine} owned={owned.ownedOf(r)} isAdmin={isAdmin} actions={actions} onRedeem={handleRedeem} busy={busy} />
         ))}
       </div>
       {!individuals.length && <div className="empty">Sin recompensas individuales.</div>}
@@ -261,12 +345,14 @@ export default function Shop({ rewards, habitLogs, bonusLogs, redemptions, curre
       <h3 className="shop-sub">Pozo Común <span className="tag tag-pool">Puntos compartidos</span></h3>
       <div className="reward-grid">
         {commons.map(({ r }) => (
-          <RewardCard key={r.id} reward={r} balance={shared} isAdmin={isAdmin} actions={actions} onRedeem={handleRedeem} busy={busy} />
+          <RewardCard key={r.id} reward={r} balance={shared} owned={owned.ownedOf(r)} isAdmin={isAdmin} actions={actions} onRedeem={handleRedeem} busy={busy} />
         ))}
       </div>
       {!commons.length && <div className="empty">Sin recompensas de Pozo Común.</div>}
 
-      {isAdmin && (
+      </>)}
+
+      {isAdmin && tab === 'shop' && (
         <>
           <button className="btn btn-ghost" style={{ width: '100%', marginTop: 16 }} onClick={loadQ4Catalog}>
             Cargar catálogo Q4
