@@ -33,17 +33,25 @@ export function commitFactor(nDays) {
 // que linealmente (3 días: 3.0 · 5 días: 6.0 · 7 días: 9.8).
 const defaultDays = (h) => (Array.isArray(h.days) && h.days.length ? h.days.length : 7);
 
-// Pisos para que ningún hábito quede "regalado" aunque en la base tenga un peso muy bajo:
+// Pisos y topes para que ningún hábito quede "regalado" ni desproporcionado aunque en la
+// base tenga un peso muy bajo o muy alto:
 // - ningún hábito pesa menos que MIN_SHARE × el peso promedio,
+// - ninguno pesa más que MAX_SHARE × el peso promedio,
 // - ninguna cumplida vale menos que MIN_HABIT_VALUE puntos.
+// Además, el cardio (hábito tipo "run") pesa igual que el gym: una sesión de cardio vale
+// lo mismo que una sesión de entrenamiento con los mismos días por semana.
 export const MIN_SHARE = 0.5;
+export const MAX_SHARE = 2;
 export const MIN_HABIT_VALUE = 10;
 
+const rawWeight = (h) => Number(h.points) || 1;
+
 function weightOf(habit, habits = []) {
-  const w = Number(habit.points) || 1;
   const list = habits.length ? habits : [habit];
-  const mean = list.reduce((s, x) => s + (Number(x.points) || 1), 0) / list.length;
-  return Math.max(w, MIN_SHARE * mean);
+  const gym = list.find((x) => x.type === 'gym');
+  const own = habit.type === 'run' && gym ? rawWeight(gym) : rawWeight(habit);
+  const mean = list.reduce((s, x) => s + rawWeight(x), 0) / list.length;
+  return Math.min(MAX_SHARE * mean, Math.max(MIN_SHARE * mean, own));
 }
 
 // Escala que hace que la semana de referencia (horario por defecto) sume WEEK_BASE.
