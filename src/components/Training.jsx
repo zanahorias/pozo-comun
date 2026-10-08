@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { dateKey, fmtShort, today, DOW_LABELS } from '../lib/dates';
 import { supabase } from '../lib/supabase';
 import { trainDaysOf } from '../lib/commitments';
+import { habitValue } from '../lib/economy';
 import ExerciseImage from './ExerciseImage';
 import TimerTool from './TimerTool';
 import '../theme-q4.css';
@@ -593,7 +594,7 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
   const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 3500); };
 
   const gymHabit = habits.find((h) => h.type === 'gym');
-  const fullPts = gymHabit ? Math.round(gymHabit.points * (currentMultiplier || 1)) : 0;
+  const fullPts = gymHabit ? Math.round(habitValue(gymHabit, uid, today(), habits) * (currentMultiplier || 1)) : 0;
   const todayKey = dateKey(today());
   const gymDoneToday = !!gymHabit && habitLogs.some((e) => e.habit_id === gymHabit.id && e.user_id === uid && e.log_date === todayKey && e.points > 0);
   const doneInDay = day.ex.filter((e) => doneToday[e.name]).length;

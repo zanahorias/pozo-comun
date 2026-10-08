@@ -88,3 +88,18 @@ export async function moveHabitDay(uid, habitId, fromKey, toKey) {
   const moves = (c.moves || []).filter((m) => m.to >= limit && !(m.habitId === habitId && m.from === fromKey));
   await saveCommitment(uid, { ...c, moves: [...moves, { habitId, from: fromKey, to: toKey }] }, { keepSince: true });
 }
+
+// Reinicio a cero: quita los días adelantados ("moves") de todos los compromisos.
+export async function clearAllMoves() {
+  const ids = Object.keys(cache);
+  for (const uid of ids) {
+    const c = cache[uid];
+    if (c && c.moves && c.moves.length) await saveCommitment(uid, { ...c, moves: [] }, { keepSince: true });
+  }
+  try {
+    Object.keys(localStorage).filter((k) => k.startsWith(LS)).forEach((k) => {
+      const c = JSON.parse(localStorage.getItem(k) || 'null');
+      if (c && c.moves) localStorage.setItem(k, JSON.stringify({ ...c, moves: [] }));
+    });
+  } catch (e) { /* ignore */ }
+}

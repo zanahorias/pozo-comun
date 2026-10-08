@@ -1,5 +1,6 @@
 import { stripTime, dateKey, today, mondayOfWeek, effectiveNow } from './dates';
-import { habitDays, isScheduled } from './commitments';
+import { isScheduled } from './commitments';
+import { habitValue, SODA_PRICE } from './economy';
 
 function effectiveStart(habit, trackingStartDate) {
   const habitStart = habit.created_at ? stripTime(new Date(habit.created_at)) : null;
@@ -68,9 +69,8 @@ export const POOL_FEED_RATE = 1;
 // así que no se suma un bonus aparte al Pozo.
 export const SHARED_POOL_BONUS_MULT = 0;
 
-// Precios "exigentes": con ~50 pts por día por persona, un gustito cuesta ~3 semanas y un
-// comodín ~3 meses. Para endurecer o aflojar todo a la vez, cambiá PRICE_SCALE (1 = base).
-export const PRICE_SCALE = 1;
+// Precios: el refresco cuesta casi 1 semana perfecta (≈ SODA_PRICE) y el resto escala igual. Para endurecer o aflojar todo a la vez, cambiá PRICE_SCALE (1 = base).
+export const PRICE_SCALE = SODA_PRICE / 900; // los precios base del catálogo están pensados con el refresco en 900
 const P = (n) => Math.max(50, Math.round((n * PRICE_SCALE) / 50) * 50);
 
 // Máximo de canjes SIN USAR por recompensa (evita acumular comodines y actividades).
@@ -225,7 +225,7 @@ export function computeMissingRows(habits, users, habitLogs, trackingStartDate) 
               user_id: u.id,
               log_date: key,
               amount: null,
-              points: -habit.points
+              points: -habitValue(habit, u.id, d, habits)
             });
           }
         }

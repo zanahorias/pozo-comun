@@ -6,6 +6,7 @@ import {
 } from '../lib/logic';
 import { supabase } from '../lib/supabase';
 import { habitDays, isScheduled, moveHabitDay } from '../lib/commitments';
+import { habitValue } from '../lib/economy';
 import '../theme-q4.css';
 
 const DEFAULT_NEW_POINTS = 5;
@@ -146,7 +147,7 @@ function HabitCreateForm({ onAdd, isAdmin }) {
       </div>
       <div className="field-row cols-2">
         {isAdmin ? (
-          <input type="number" min="1" placeholder="Puntos (al 100%)" value={points} onChange={(e) => setPoints(e.target.value)} />
+          <input type="number" min="1" placeholder="Peso (relativo, ej: 5 / 10)" value={points} onChange={(e) => setPoints(e.target.value)} />
         ) : (
           <div className="hmeta" style={{ alignSelf: 'center' }}>Puntos: los define el admin después</div>
         )}
@@ -211,7 +212,7 @@ function HabitEditForm({ habit, isAdmin, onSave, onCancel }) {
         {isAdmin ? (
           <input type="number" min="1" value={points} onChange={(e) => setPoints(e.target.value)} />
         ) : (
-          <div className="hmeta" style={{ alignSelf: 'center' }}>Puntos: {habit.points} (solo admin)</div>
+          <div className="hmeta" style={{ alignSelf: 'center' }}>Peso: {habit.points} (solo admin)</div>
         )}
         <select value={type} onChange={(e) => setType(e.target.value)}>
           <option value="custom">General</option>
@@ -325,7 +326,7 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
                   <div className="hmeta">{dayLabels} · meta {h.target} {h.unit}/día</div>
                 </div>
                 {scheduledToday && <StatusTag status={habitDayStatus(h, t, currentUser.id, habitLogs, trackingStartDate)} />}
-                <div className="habit-pts">hasta +{Math.round(h.points * mult)}</div>
+                <div className="habit-pts">hasta +{Math.round(habitValue(h, currentUser.id, t, habits) * mult)}</div>
                 <button className="rm" style={{ color: 'var(--court-light)' }} onClick={() => setEditingId(h.id)}>✎</button>
                 {isAdmin && (
                   <button className="rm" onClick={() => window.confirm(`¿Eliminar "${habitLabel(h)}"?`) && actions.deleteHabit(h.id)}>✕</button>
@@ -370,7 +371,7 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
                 <div className="hmeta">{dayLabels}{scheduledToday ? '' : ' · no corresponde hoy'}</div>
               </div>
               {scheduledToday && <StatusTag status={status} />}
-              <div className="habit-pts">+{Math.round(h.points * mult)}{h.shared ? ' · x2 si ambos' : ''}</div>
+              <div className="habit-pts">+{Math.round(habitValue(h, currentUser.id, t, habits) * mult)}{h.shared ? ' · x2 si ambos' : ''}</div>
               <button className="rm" style={{ color: 'var(--court-light)' }} onClick={() => setEditingId(h.id)}>✎</button>
               {isAdmin && (
                 <button className="rm" onClick={() => window.confirm(`¿Eliminar "${habitLabel(h)}"?`) && actions.deleteHabit(h.id)}>✕</button>
@@ -412,7 +413,7 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
             style={{ width: '100%', borderColor: 'var(--coral)', color: 'var(--coral)' }}
             onClick={() => {
               if (window.confirm('¿Reiniciar TODO el progreso (calendario, puntos y canjes)? Esta acción no se puede deshacer.')) {
-                actions.resetAllProgress();
+                Promise.resolve(actions.resetAllProgress()).then((r) => { if (r && r.ok === false) window.alert(r.message); });
               }
             }}
           >

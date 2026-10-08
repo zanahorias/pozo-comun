@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DAY_REF } from '../lib/economy';
 import { CAL_DOW_LABELS } from '../lib/dates';
 import { userKey } from '../lib/theme';
 import { dayAggregateStatus, pool, todayFor, currentStreak } from '../lib/logic';
@@ -197,7 +198,7 @@ export default function Board({ users, habits, habitLogs, bonusLogs, workouts, r
         {users.map((u) => {
           const val = todayFor(u.id, habitLogs, bonusLogs);
           const streak = currentStreak(habits, u.id, habitLogs, trackingStartDate);
-          const pct = Math.min(100, Math.round((val / 15) * 100));
+          const pct = Math.min(100, Math.round((val / DAY_REF) * 100));
           return (
             <div className="today-card" key={u.id}>
               <div className="name">{u.name} · hoy</div>

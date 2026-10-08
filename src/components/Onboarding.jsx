@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DOW_LABELS } from '../lib/dates';
 import { habitLabel } from '../lib/logic';
+import { valueForDays, WEEK_BASE } from '../lib/economy';
 import { getCommitment, saveCommitment, trainDaysOf } from '../lib/commitments';
 import '../theme-q4.css';
 
@@ -34,6 +35,12 @@ export default function Onboarding({ user, habits, onDone, onCancel }) {
   const trainOk = train.length >= 2 && train.length <= 5;
   const canSave = trainOk && others.every((h) => days[h.id].length > 0);
 
+  // Potencial semanal estimado con los días elegidos (más días → cada cumplida vale más).
+  const weekly = habits.reduce((sum, h) => {
+    const n = h.type === 'gym' ? train.length : (days[h.id] || []).length;
+    return sum + n * valueForDays(h, n, habits);
+  }, 0);
+
   async function save() {
     const habitDays = { ...days };
     gymHabits.forEach((h) => { habitDays[h.id] = train; });
@@ -64,6 +71,10 @@ export default function Onboarding({ user, habits, onDone, onCancel }) {
           <DayPicker value={days[h.id]} onChange={(v) => setDays((s) => ({ ...s, [h.id]: v }))} />
         </div>
       ))}
+
+      <div className="locked-note">
+        Potencial semanal con tus días: <b>~{weekly} pts</b> (referencia: {WEEK_BASE}). Cuantos más días te comprometés, más vale cada cumplida, pero también más resta fallar.
+      </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
         <button className="btn btn-primary" style={{ flex: 1 }} disabled={!canSave} onClick={save}>Guardar compromisos</button>

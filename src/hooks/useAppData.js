@@ -2,9 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { dateKey, stripTime, today } from '../lib/dates';
 import { computeMissingRows, currentStreak, isPerfectDay } from '../lib/logic';
-import { loadCommitments } from '../lib/commitments';
-
-const BONUS_POINTS = { perfect_day: 10, streak3: 20, streak7: 50 };
+import { loadCommitments, clearAllMoves } from '../lib/commitments';
+import { habitValue, BONUS_POINTS } from '../lib/economy';
 
 const MONTH_START_KEY = () => {
   const t = today();
@@ -258,7 +257,7 @@ export function useAppData() {
       await supabase.from('habit_logs').delete().eq('id', existing.id);
       await undoSharedDouble(habit, key, userId);
     } else {
-      let points = Math.round(habit.points * currentMultiplier);
+      let points = Math.round(habitValue(habit, userId, today(), habits) * currentMultiplier);
       if (habit.type === 'gym') {
         // Los ejercicios ya completados hoy cuentan: el total del día nunca supera el valor del hábito.
         const { data: tp } = await supabase
@@ -286,7 +285,7 @@ export function useAppData() {
       if (existing) await supabase.from('habit_logs').delete().eq('id', existing.id);
       if (marked) await undoSharedDouble(habit, key, userId);
     } else {
-      const basePts = Math.round(habit.points * Math.min(1, next / habit.target));
+      const basePts = Math.round(habitValue(habit, userId, today(), habits) * Math.min(1, next / habit.target));
       let pts = Math.round(basePts * currentMultiplier);
       if (marked && next >= habit.target) pts *= 2;
       await supabase.from('habit_logs').upsert(
@@ -306,7 +305,7 @@ export function useAppData() {
       (e) => e.habit_id === habit.id && e.user_id === userId && e.log_date === key
     );
     if (existing && existing.points > 0) return;
-    const points = Math.round(habit.points * currentMultiplier);
+    const points = Math.round(habitValue(habit, userId, today(), habits) * currentMultiplier);
     await supabase.from('habit_logs').upsert(
       [{ habit_id: habit.id, user_id: userId, log_date: key, points, amount: null }],
       { onConflict: 'habit_id,user_id,log_date' }
@@ -371,7 +370,7 @@ export function useAppData() {
   }
 
   async function recoverHabitDay(entry, habit) {
-    await supabase.from('habit_logs').update({ points: habit.points, amount: null }).eq('id', entry.id);
+    await supabase.from('habit_logs').update({ points: habitValue(habit, entry.user_id, new Date(entry.log_date + 'T00:00:00'), habits), amount: null }).eq('id', entry.id);
     fetchAll();
   }
 
@@ -389,8 +388,25 @@ export function useAppData() {
   }
 
   // Borra todo el historial (hábitos, bonos, entrenamientos, cardio, canjes y
-  // comodines usados) y mueve la fecha de inicio de conteo a hoy, para arrancar de cero.
+  // comodines usados), saca las marcas del calendario y mueve la fecha de inicio
+  // de conteo a hoy, para arrancar de cero. Devuelve { ok, message }.
   async function resetAllProgress() {
+    // 1) Primero la fecha de inicio: si no se puede guardar, NO se borra nada.
+    //    Sin esa fecha, al vaciar los registros todos los días pasados quedarían
+    //    marcados como "no cumplidos" (✕ rojo).
+    const start = dateKey(today());
+    const { error: upErr } = await supabase
+      .from('app_settings')
+      .upsert({ id: 1, tracking_start_date: start }, { onConflict: 'id' });
+    const { data: check } = await supabase.from('app_settings').select('tracking_start_date').eq('id', 1).maybeSingle();
+    if (upErr || !check || String(check.tracking_start_date).slice(0, 10) !== start) {
+      console.warn('Reset: no se pudo guardar tracking_start_date', upErr);
+      return {
+        ok: false,
+        message: 'No se pudo guardar la fecha de inicio en app_settings (revisá los permisos/RLS de esa tabla). No se borró nada.'
+      };
+    }
+
     const wipe = async (table, col) => {
       const { error: err } = await supabase.from(table).delete().not(col, 'is', null);
       if (err) console.warn('Reset: no se pudo vaciar ' + table, err.message);
@@ -404,8 +420,9 @@ export function useAppData() {
     await wipe('redemptions', 'id');
     await wipe('shared_bonus_log', 'habit_id');
     await wipe('active_multipliers', 'id');
-    await supabase.from('app_settings').update({ tracking_start_date: dateKey(today()) }).eq('id', 1);
-    fetchAll();
+    await clearAllMoves(); // días "adelantados" que dejaban marcas en el calendario
+    await fetchAll();
+    return { ok: true };
   }
 
   return {
