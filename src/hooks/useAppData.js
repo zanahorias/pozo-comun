@@ -388,14 +388,22 @@ export function useAppData() {
     fetchAll();
   }
 
-  // Borra todo el historial de cumplimiento (hábitos, bonos y canjes) y
-  // mueve la fecha de inicio de conteo a hoy, para arrancar de cero.
+  // Borra todo el historial (hábitos, bonos, entrenamientos, cardio, canjes y
+  // comodines usados) y mueve la fecha de inicio de conteo a hoy, para arrancar de cero.
   async function resetAllProgress() {
-    await supabase.from('habit_logs').delete().not('id', 'is', null);
-    await supabase.from('bonus_logs').delete().not('id', 'is', null);
-    await supabase.from('redemptions').delete().not('id', 'is', null);
-    await supabase.from('shared_bonus_log').delete().not('habit_id', 'is', null);
-    await supabase.from('active_multipliers').delete().not('id', 'is', null);
+    const wipe = async (table, col) => {
+      const { error: err } = await supabase.from(table).delete().not(col, 'is', null);
+      if (err) console.warn('Reset: no se pudo vaciar ' + table, err.message);
+    };
+    // redemption_uses (comodines usados) va antes que redemptions por la clave foránea.
+    await wipe('redemption_uses', 'redemption_id');
+    await wipe('habit_logs', 'id');
+    await wipe('bonus_logs', 'id');
+    await wipe('training_points', 'id');
+    await wipe('workouts', 'id'); // incluye cardio (type = 'cardio') y fuerza
+    await wipe('redemptions', 'id');
+    await wipe('shared_bonus_log', 'habit_id');
+    await wipe('active_multipliers', 'id');
     await supabase.from('app_settings').update({ tracking_start_date: dateKey(today()) }).eq('id', 1);
     fetchAll();
   }

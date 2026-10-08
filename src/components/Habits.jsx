@@ -405,7 +405,7 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
         <div className="admin-panel" style={{ borderColor: 'var(--coral)' }}>
           <label className="flabel" style={{ color: 'var(--coral)' }}>Zona de peligro</label>
           <div className="hmeta" style={{ marginBottom: 10 }}>
-            Borra todo el historial de hábitos, bonos y canjes, y arranca el conteo de nuevo desde hoy. No se puede deshacer.
+            Borra todo el historial de hábitos, bonos, cardio, entrenamientos, canjes y comodines, y arranca el conteo de nuevo desde hoy. No se puede deshacer.
           </div>
           <button
             className="btn btn-ghost"

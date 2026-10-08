@@ -32,8 +32,8 @@ export function getCommitment(uid) {
 export const hasCommitment = (uid) => !!getCommitment(uid);
 
 // data: { habitDays: {[habitId]: number[]}, trainDays: number[] }
-export async function saveCommitment(uid, data) {
-  const full = { ...data, since: dateKey(today()) };
+export async function saveCommitment(uid, data, opts = {}) {
+  const full = { ...data, since: opts.keepSince && data.since ? data.since : dateKey(today()) };
   cache[uid] = full;
   try { localStorage.setItem(LS + uid, JSON.stringify(full)); } catch (e) { /* ignore */ }
   notify();
@@ -68,21 +68,23 @@ export function useCommitments() {
   return v;
 }
 
-export function isScheduled(habit, date) {
-  if (!habit) return false;
-  // Verifica si el hábito está programado para esa fecha o día de la semana
-  if (habit.scheduled_date) return habit.scheduled_date === date;
-  if (habit.days && Array.isArray(habit.days)) {
-    const dow = new Date(date).getDay();
-    return habit.days.includes(dow);
-  }
-  return true;
+// ¿Corresponde el hábito ese día? Tiene en cuenta los días movidos ("adelantar").
+export function isScheduled(habit, uid, dateObj) {
+  const c = getCommitment(uid);
+  const key = dateKey(dateObj);
+  const moves = (c?.moves || []).filter((m) => m.habitId === habit.id);
+  if (moves.some((m) => m.to === key)) return true;
+  if (moves.some((m) => m.from === key)) return false;
+  return habitDays(habit, uid, dateObj).includes(dateObj.getDay());
 }
-// Función para mover/adelantar la fecha de un hábito sin marcarlo completado
-export function moveHabitDay(habit, targetDate) {
-  if (!habit) return habit;
-  return {
-    ...habit,
-    scheduled_date: targetDate
-  };
+
+// Adelantar = cambiar el día del hábito: deja de corresponder en `fromKey` y pasa a hoy.
+export async function moveHabitDay(uid, habitId, fromKey, toKey) {
+  const c = getCommitment(uid);
+  if (!c) return;
+  const old = new Date(today());
+  old.setDate(old.getDate() - 21);
+  const limit = dateKey(old);
+  const moves = (c.moves || []).filter((m) => m.to >= limit && !(m.habitId === habitId && m.from === fromKey));
+  await saveCommitment(uid, { ...c, moves: [...moves, { habitId, from: fromKey, to: toKey }] }, { keepSince: true });
 }
