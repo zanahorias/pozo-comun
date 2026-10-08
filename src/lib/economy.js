@@ -33,18 +33,31 @@ export function commitFactor(nDays) {
 // que linealmente (3 días: 3.0 · 5 días: 6.0 · 7 días: 9.8).
 const defaultDays = (h) => (Array.isArray(h.days) && h.days.length ? h.days.length : 7);
 
+// Pisos para que ningún hábito quede "regalado" aunque en la base tenga un peso muy bajo:
+// - ningún hábito pesa menos que MIN_SHARE × el peso promedio,
+// - ninguna cumplida vale menos que MIN_HABIT_VALUE puntos.
+export const MIN_SHARE = 0.5;
+export const MIN_HABIT_VALUE = 10;
+
+function weightOf(habit, habits = []) {
+  const w = Number(habit.points) || 1;
+  const list = habits.length ? habits : [habit];
+  const mean = list.reduce((s, x) => s + (Number(x.points) || 1), 0) / list.length;
+  return Math.max(w, MIN_SHARE * mean);
+}
+
 // Escala que hace que la semana de referencia (horario por defecto) sume WEEK_BASE.
 export function pointScale(habits = []) {
   const raw = habits.reduce((s, h) => {
     const n = defaultDays(h);
-    return s + (Number(h.points) || 1) * n * commitFactor(n);
+    return s + weightOf(h, habits) * n * commitFactor(n);
   }, 0);
   return raw > 0 ? WEEK_BASE / raw : 1;
 }
 
 // Valor de UNA cumplida de `habit`, dado cuántos días por semana se comprometió.
 export function valueForDays(habit, nDays, habits = []) {
-  return Math.max(1, Math.round(pointScale(habits) * (Number(habit.points) || 1) * commitFactor(nDays)));
+  return Math.max(MIN_HABIT_VALUE, Math.round(pointScale(habits) * weightOf(habit, habits) * commitFactor(nDays)));
 }
 
 // Valor de una cumplida de `habit` para `uid` en `dateObj` (sin multiplicadores).

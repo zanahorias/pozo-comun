@@ -400,6 +400,26 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
         );
       })}
 
+      {isAdmin && (
+        <div className="admin-panel">
+          <label className="flabel">Tabla de puntos (tus compromisos actuales)</label>
+          {habits.map((h) => {
+            const n = habitDays(h, currentUser.id, t).length;
+            const v = habitValue(h, currentUser.id, t, habits);
+            const step = h.kind === 'quantity' && h.target ? ` · +${Math.max(1, Math.round((v * (h.step || 1)) / h.target))} por ${h.step || 1} ${h.unit || ''}` : '';
+            return (
+              <div className="set-row" key={h.id}>
+                <span className="spec">{habitLabel(h)} · peso {h.points} · {n} d/sem{step}</span>
+                <b>{v} c/u · {v * n}/sem</b>
+              </div>
+            );
+          })}
+          <div className="hmeta" style={{ marginTop: 6 }}>
+            Semana perfecta con tus días: {habits.reduce((sum, h) => sum + habitDays(h, currentUser.id, t).length * habitValue(h, currentUser.id, t, habits), 0)} pts (+ bonos).
+          </div>
+        </div>
+      )}
+
       {isAdmin && <HabitCreateForm onAdd={actions.addHabit} isAdmin={isAdmin} />}
 
       {isAdmin && (
