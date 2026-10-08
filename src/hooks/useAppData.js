@@ -395,15 +395,27 @@ export function useAppData() {
     //    Sin esa fecha, al vaciar los registros todos los días pasados quedarían
     //    marcados como "no cumplidos" (✕ rojo).
     const start = dateKey(today());
-    const { error: upErr } = await supabase
-      .from('app_settings')
-      .upsert({ id: 1, tracking_start_date: start }, { onConflict: 'id' });
-    const { data: check } = await supabase.from('app_settings').select('tracking_start_date').eq('id', 1).maybeSingle();
-    if (upErr || !check || String(check.tracking_start_date).slice(0, 10) !== start) {
-      console.warn('Reset: no se pudo guardar tracking_start_date', upErr);
+    const readStart = async () => {
+      const { data } = await supabase.from('app_settings').select('tracking_start_date').eq('id', 1).maybeSingle();
+      return data ? String(data.tracking_start_date || '').slice(0, 10) : null;
+    };
+    const errors = [];
+    // Primero update (como antes); .select() para saber si realmente tocó una fila.
+    const up = await supabase.from('app_settings').update({ tracking_start_date: start }).eq('id', 1).select('id');
+    if (up.error) errors.push('update: ' + up.error.message);
+    let saved = !up.error && (up.data || []).length > 0 && (await readStart()) === start;
+    if (!saved) {
+      const ins = await supabase.from('app_settings').upsert({ id: 1, tracking_start_date: start }, { onConflict: 'id' });
+      if (ins.error) errors.push('upsert: ' + ins.error.message);
+      saved = (await readStart()) === start;
+    }
+    if (!saved) {
+      console.warn('Reset: no se pudo guardar tracking_start_date', errors);
       return {
         ok: false,
-        message: 'No se pudo guardar la fecha de inicio en app_settings (revisá los permisos/RLS de esa tabla). No se borró nada.'
+        message:
+          'No se pudo guardar la fecha de inicio en app_settings. No se borró nada.\n\n' +
+          (errors.length ? errors.join('\n') : 'Supabase no devolvió error, pero la fila no cambió (probablemente falta una policy de UPDATE para la tabla).')
       };
     }
 
