@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   SCOPE, Q4_CATALOG, MAX_STOCK, parseReward, encodeScope,
-  individualBalance, poolBalance, jokerState
+  individualBalance, poolBalance, jokerState, PRICE_SCALE
 } from '../lib/logic';
+import { SODA_PRICE } from '../lib/economy';
 import { showPoints } from '../lib/pointsFx';
 import '../theme-q4.css';
 
@@ -69,7 +70,7 @@ function RewardCreateForm({ onAdd }) {
   const [scope, setScope] = useState(SCOPE.INDIVIDUAL);
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [cost, setCost] = useState(450);
+  const [cost, setCost] = useState(SODA_PRICE);
   const [emoji, setEmoji] = useState('🎁');
   const [multValue, setMultValue] = useState(2);
   const [multHours, setMultHours] = useState(24);
@@ -282,19 +283,57 @@ export default function Shop({ rewards, habitLogs, bonusLogs, redemptions, curre
     }
   }
 
+  // Clave de comparación: sin mayúsculas, tildes, espacios ni símbolos ("Gustito/Soda/Snack" = "gustito soda snack").
+  const nameKey = (str) => (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
+  const catKeys = new Set(Q4_CATALOG.map((c) => nameKey(c.name)));
+  const roundPrice = (n) => Math.max(50, Math.round(n / 50) * 50);
+  const outdatedCatalog = Q4_CATALOG.filter((c) => {
+    const ex = rewards.find((r) => nameKey(r.name) === nameKey(c.name));
+    return !ex || ex.cost_points !== c.cost;
+  });
+  // Las recompensas propias se reescalan una sola vez (se recuerda en este dispositivo)
+  // para no aplicar la baja dos veces si se vuelve a apretar el botón.
+  const SCALED_FLAG = 'shop-custom-prices-scaled-v1';
+  const alreadyScaled = (() => { try { return !!localStorage.getItem(SCALED_FLAG); } catch (e) { return false; } })();
+  const customRewards = alreadyScaled ? [] : rewards.filter((r) => !catKeys.has(nameKey(r.name)));
+
+  // Sincroniza TODOS los precios: catálogo Q4 (por nombre) y, si el admin lo acepta,
+  // las recompensas propias que no están en el catálogo (se les aplica la misma baja).
   async function loadQ4Catalog() {
-    if (!window.confirm('¿Cargar/actualizar el catálogo Q4 (precios y tipo Individual/Pozo)?')) return;
-    const norm = (s) => (s || '').toLowerCase().trim();
-    for (const c of Q4_CATALOG) {
-      const existing = rewards.find((r) => norm(r.name) === norm(c.name));
-      const payload = {
-        name: c.name, emoji: c.emoji, cost_points: c.cost,
-        description: encodeScope(c.description, c.scope)
-      };
-      if (existing) await actions.updateReward(existing.id, payload);
-      else await actions.addReward({ ...payload, kind: 'normal' });
+    const lines = [];
+    const toUpdate = [];
+    const toAdd = [];
+    Q4_CATALOG.forEach((c) => {
+      const ex = rewards.find((r) => nameKey(r.name) === nameKey(c.name));
+      if (!ex) { toAdd.push(c); lines.push(`+ ${c.name}: ${c.cost} (nuevo)`); }
+      else if (ex.cost_points !== c.cost) { toUpdate.push({ ex, c }); lines.push(`${ex.name}: ${ex.cost_points} → ${c.cost}`); }
+    });
+    const customChanges = customRewards
+      .map((r) => ({ r, cost: roundPrice(r.cost_points * PRICE_SCALE) }))
+      .filter((x) => x.cost !== x.r.cost_points);
+
+    if (!toUpdate.length && !toAdd.length && !customChanges.length) { setMsg('Todos los precios ya están actualizados ✓'); return; }
+
+    if (toUpdate.length || toAdd.length) {
+      const preview = lines.slice(0, 14).join('\n') + (lines.length > 14 ? `\n… y ${lines.length - 14} más` : '');
+      if (!window.confirm(`Catálogo Q4: se actualizan ${toUpdate.length} precios y se agregan ${toAdd.length} ítems.\n\n${preview}\n\n¿Aplicar?`)) return;
+      for (const { ex, c } of toUpdate) {
+        await actions.updateReward(ex.id, { name: c.name, emoji: c.emoji, cost_points: c.cost, description: encodeScope(c.description, c.scope) });
+      }
+      for (const c of toAdd) {
+        await actions.addReward({ name: c.name, emoji: c.emoji, cost_points: c.cost, description: encodeScope(c.description, c.scope), kind: 'normal' });
+      }
     }
-    refresh();
+
+    if (customChanges.length) {
+      const list = customChanges.slice(0, 14).map((x) => `${x.r.name}: ${x.r.cost_points} → ${x.cost}`).join('\n') + (customChanges.length > 14 ? `\n… y ${customChanges.length - 14} más` : '');
+      if (window.confirm(`Estas recompensas NO están en el catálogo y tienen precios viejos. ¿Bajarlas con la misma proporción (×${PRICE_SCALE.toFixed(2)})?\n\n${list}\n\n(Aceptá solo UNA vez; después podés ajustar cada una con ✎.)`)) {
+        for (const x of customChanges) await actions.updateReward(x.r.id, { cost_points: x.cost });
+        try { localStorage.setItem(SCALED_FLAG, '1'); } catch (e) { /* ignore */ }
+      }
+    }
+    await refresh();
+    setMsg('Precios actualizados ✓');
   }
 
   return (
@@ -364,7 +403,7 @@ export default function Shop({ rewards, habitLogs, bonusLogs, redemptions, curre
       {isAdmin && tab === 'shop' && (
         <>
           <button className="btn btn-ghost" style={{ width: '100%', marginTop: 16 }} onClick={loadQ4Catalog}>
-            Cargar catálogo Q4
+            Actualizar precios / cargar catálogo Q4{outdatedCatalog.length + customRewards.length ? ` (${outdatedCatalog.length} del catálogo${customRewards.length ? ` + ${customRewards.length} propias` : ''} por revisar)` : ''}
           </button>
           <RewardCreateForm onAdd={actions.addReward} />
         </>
