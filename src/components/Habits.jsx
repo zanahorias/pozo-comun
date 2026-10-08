@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CAL_DOW_LABELS, DOW_LABELS, dateKey, mondayOfWeek, today } from '../lib/dates';
+import { CAL_DOW_LABELS, DOW_LABELS, WEEK_ORDER, dateKey, mondayOfWeek, today } from '../lib/dates';
 import {
   habitDayStatus, findRecoverableMiss, findJokerTarget, parseReward,
   incompleteToday, nextReminder, habitLabel, findAdvanceTarget, jokerState
 } from '../lib/logic';
 import { supabase } from '../lib/supabase';
-import { habitDays, isScheduled, moveHabitDay } from '../lib/commitments';
+import { habitDays, isScheduled, moveHabitDay, getCommitment, saveCommitment } from '../lib/commitments';
 import { habitValue } from '../lib/economy';
 import '../theme-q4.css';
 
@@ -166,8 +166,8 @@ function HabitCreateForm({ onAdd, isAdmin }) {
       )}
       <label className="flabel">Días de la semana</label>
       <div className="day-picker">
-        {DOW_LABELS.map((l, i) => (
-          <button key={i} type="button" className={days.includes(i) ? 'sel' : ''} onClick={() => toggleDay(i)}>{l}</button>
+        {WEEK_ORDER.map((i) => (
+          <button key={i} type="button" className={days.includes(i) ? 'sel' : ''} onClick={() => toggleDay(i)}>{DOW_LABELS[i]}</button>
         ))}
       </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13 }}>
@@ -179,7 +179,7 @@ function HabitCreateForm({ onAdd, isAdmin }) {
   );
 }
 
-function HabitEditForm({ habit, isAdmin, onSave, onCancel }) {
+function HabitEditForm({ habit, uid, isAdmin, onSave, onCancel }) {
   const [name, setName] = useState(habit.name);
   const [type, setType] = useState(habit.type);
   const [shared, setShared] = useState(!!habit.shared);
@@ -187,7 +187,7 @@ function HabitEditForm({ habit, isAdmin, onSave, onCancel }) {
   const [unit, setUnit] = useState(habit.unit || '');
   const [target, setTarget] = useState(habit.target || 1);
   const [step, setStep] = useState(habit.step || 1);
-  const [days, setDays] = useState(habit.days);
+  const [days, setDays] = useState(() => habitDays(habit, uid, today()));
 
   function toggleDay(i) {
     setDays((d) => (d.includes(i) ? d.filter((x) => x !== i) : [...d, i]));
@@ -195,14 +195,15 @@ function HabitEditForm({ habit, isAdmin, onSave, onCancel }) {
 
   function save() {
     if (!name.trim() || !days.length) return;
-    const patch = { name: name.trim(), type, days, shared };
+    // Los días son un compromiso de cada usuario: no se guardan en el hábito global.
+    const patch = { name: name.trim(), type, shared };
     if (isAdmin) patch.points = Number(points) || habit.points;
     if (habit.kind === 'quantity') {
       patch.unit = unit.trim() || habit.unit;
       patch.target = Number(target) || habit.target;
       patch.step = Number(step) || habit.step;
     }
-    onSave(patch);
+    onSave(patch, days);
   }
 
   return (
@@ -229,8 +230,8 @@ function HabitEditForm({ habit, isAdmin, onSave, onCancel }) {
       )}
       <label className="flabel">Días de la semana</label>
       <div className="day-picker">
-        {DOW_LABELS.map((l, i) => (
-          <button key={i} type="button" className={days.includes(i) ? 'sel' : ''} onClick={() => toggleDay(i)}>{l}</button>
+        {WEEK_ORDER.map((i) => (
+          <button key={i} type="button" className={days.includes(i) ? 'sel' : ''} onClick={() => toggleDay(i)}>{DOW_LABELS[i]}</button>
         ))}
       </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13 }}>
@@ -283,6 +284,24 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
     actions.recoverHabitDay(entry, h);
   }
 
+  // Cambiar los días desde "editar" = cambiar TU compromiso con ese hábito (y, si es el
+  // de gym, tus días de entrenamiento). Antes se guardaban en el hábito global y no
+  // tenían efecto sobre el compromiso del usuario.
+  async function saveMyDays(habit, newDays) {
+    const current = habitDays(habit, currentUser.id, t) || [];
+    const same = current.length === newDays.length && current.every((d) => newDays.includes(d));
+    if (same) return true;
+    if (habit.type === 'gym' && (newDays.length < 2 || newDays.length > 5)) {
+      window.alert('Para entrenar elegí entre 2 y 5 días por semana.');
+      return false;
+    }
+    const c = getCommitment(currentUser.id) || {};
+    const next = { ...c, habitDays: { ...(c.habitDays || {}), [habit.id]: newDays } };
+    if (habit.type === 'gym') next.trainDays = WEEK_ORDER.filter((d) => newDays.includes(d));
+    await saveCommitment(currentUser.id, next);
+    return true;
+  }
+
   return (
     <section className="screen active">
       <h2 className="section-title">Hábitos de la semana</h2>
@@ -298,9 +317,12 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
             <HabitEditForm
               key={h.id}
               habit={h}
+              uid={currentUser.id}
               isAdmin={isAdmin}
               onCancel={() => setEditingId(null)}
-              onSave={(patch) => {
+              onSave={async (patch, newDays) => {
+                const ok = await saveMyDays(h, newDays);
+                if (!ok) return;
                 actions.updateHabit(h.id, patch);
                 setEditingId(null);
               }}
@@ -310,7 +332,7 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
 
         const myDays = habitDays(h, currentUser.id, t);
         const scheduledToday = isScheduled(h, currentUser.id, t);
-        const dayLabels = myDays.length === 7 ? 'Todos los días' : myDays.slice().sort().map((d) => DOW_LABELS[d]).join(' ');
+        const dayLabels = myDays.length === 7 ? 'Todos los días' : WEEK_ORDER.filter((d) => myDays.includes(d)).map((d) => DOW_LABELS[d]).join(' ');
 
         if (h.kind === 'quantity') {
           const key = dateKey(t);
@@ -320,7 +342,10 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
           return (
             <div className={'habit-card' + (pct >= 100 ? ' is-done' : '')} key={h.id}>
               <div className="habit-row">
-                <div className={'check disabled' + (pct >= 100 ? ' done' : '')}>{pct >= 100 ? '✓' : ''}</div>
+                <div
+                  className={'check' + (pct >= 100 ? ' done' : '') + (scheduledToday ? '' : ' disabled')}
+                  onClick={() => scheduledToday && actions.addQuantity(h, currentUser.id, pct >= 100 ? -amount : h.target - amount)}
+                >{pct >= 100 ? '✓' : ''}</div>
                 <div className="habit-info">
                   <div className="hname">{habitLabel(h)}{h.shared ? ' 🤝' : ''}</div>
                   <div className="hmeta">{dayLabels} · meta {h.target} {h.unit}/día</div>
@@ -338,6 +363,9 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
                 {scheduledToday ? (
                   <>
                     <QtyControls habit={h} onAdd={(delta) => actions.addQuantity(h, currentUser.id, delta)} />
+                    {pct < 100 && (
+                      <button className="btn btn-primary btn-small" style={{ marginTop: 8, width: '100%' }} onClick={() => actions.addQuantity(h, currentUser.id, h.target - amount)}>✓ Marcar meta como hecha</button>
+                    )}
                     {jokers > 0 && pct < 100 && (
                       <button className="btn btn-ghost btn-small" style={{ marginTop: 8 }} onClick={() => applyJoker(h, entry)}>🃏 Usar comodín hoy</button>
                     )}

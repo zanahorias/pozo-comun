@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { dateKey, stripTime, today } from '../lib/dates';
-import { computeMissingRows, currentStreak, isPerfectDay } from '../lib/logic';
+import { computeMissingRows, currentStreak, isPerfectDay, rewardScope, SCOPE } from '../lib/logic';
 import { loadCommitments, clearAllMoves } from '../lib/commitments';
 import { habitValue, BONUS_POINTS } from '../lib/economy';
 
@@ -26,6 +26,7 @@ export function useAppData() {
   const [currentMultiplier, setCurrentMultiplier] = useState(1);
   const [multiplierInfo, setMultiplierInfo] = useState(null); // { source, expiresAt }
   const [userTotals, setUserTotals] = useState({}); // { [userId]: totalPoints }
+  const [poolTotal, setPoolTotal] = useState(0); // saldo del Pozo Común (todo el historial)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -33,7 +34,7 @@ export function useAppData() {
     try {
       const monthStart = MONTH_START_KEY();
       const nowIso = new Date().toISOString();
-      const [u, h, hl, bl, w, r, red, settings, goalRes, multRes, hlAll, blAll, tpMonth, tpAll] = await Promise.all([
+      const [u, h, hl, bl, w, r, red, settings, goalRes, multRes, hlAll, blAll, tpMonth, tpAll, redAll] = await Promise.all([
         supabase.from('users').select('*').order('created_at'),
         supabase.from('habits').select('*').eq('active', true).order('created_at'),
         supabase.from('habit_logs').select('*').gte('log_date', monthStart),
@@ -48,7 +49,8 @@ export function useAppData() {
         supabase.from('bonus_logs').select('user_id, points'),
         // Puntos por entrenar (ejercicios / rutina completa). Si la tabla no existe, se ignora.
         supabase.from('training_points').select('*').gte('log_date', monthStart),
-        supabase.from('training_points').select('user_id, points')
+        supabase.from('training_points').select('user_id, points'),
+        supabase.from('redemptions').select('reward_id, points_spent')
       ]);
       if (u.error) throw u.error;
       if (h.error) throw h.error;
@@ -113,6 +115,12 @@ export function useAppData() {
       setCurrentMultiplier(mult);
       setMultiplierInfo(multInfo);
       setUserTotals(totals);
+      // Pozo Común = lo ganado entre todos − canjes de recompensas del Pozo.
+      const sharedSpent = (redAll?.data || []).reduce((sum, x) => {
+        const rw = (r.data || []).find((y) => y.id === x.reward_id);
+        return rw && rewardScope(rw) === SCOPE.SHARED ? sum + x.points_spent : sum;
+      }, 0);
+      setPoolTotal(Object.values(totals).reduce((a, b) => a + b, 0) - sharedSpent);
       setError(null);
       return { users: u.data || [], habits: h.data || [], habitLogs: hl.data || [], trackingStartDate: tsd };
     } catch (e) {
@@ -452,6 +460,7 @@ export function useAppData() {
     currentMultiplier,
     multiplierInfo,
     userTotals,
+    poolTotal,
     loading,
     error,
     fetchMonthLogs,

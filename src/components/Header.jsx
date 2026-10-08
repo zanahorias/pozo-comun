@@ -1,6 +1,6 @@
 import { userKey } from '../lib/theme';
 
-export default function Header({ users, currentUser, onSwitchUser, isAdmin, onToggleAdmin, userTotals }) {
+export default function Header({ users, currentUser, onSwitchUser, isAdmin, onToggleAdmin, userTotals, poolTotal }) {
   return (
     <header className="top">
       <div className="brand">
@@ -20,6 +20,11 @@ export default function Header({ users, currentUser, onSwitchUser, isAdmin, onTo
               <span className="switcher-total">{userTotals?.[u.id] ?? 0}</span>
             </button>
           ))}
+          {poolTotal !== undefined && (
+            <span className="switcher-pool" title="Pozo Común">
+              🤝 Pozo <span className="switcher-total">{poolTotal}</span>
+            </span>
+          )}
         </div>
         <button className={'admin-chip' + (isAdmin ? ' on' : '')} onClick={onToggleAdmin}>
           <span>{isAdmin ? 'Admin ✓' : 'Admin'}</span>

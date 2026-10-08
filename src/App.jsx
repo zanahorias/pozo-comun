@@ -18,7 +18,7 @@ export default function App() {
   const {
     users, habits, habitLogs, bonusLogs, workouts, rewards, redemptions,
     trackingStartDate, adminPin, currentGoal, goalProgress,
-    currentMultiplier, multiplierInfo, userTotals,
+    currentMultiplier, multiplierInfo, userTotals, poolTotal,
     loading, error, actions, fetchMonthLogs
   } = useAppData();
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem(PROFILE_KEY));
@@ -109,6 +109,7 @@ export default function App() {
         isAdmin={isAdminMode}
         onToggleAdmin={handleToggleAdmin}
         userTotals={userTotals}
+        poolTotal={poolTotal}
       />
       <main>
         {screen === 'board' && (

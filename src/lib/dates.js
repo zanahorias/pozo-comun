@@ -47,3 +47,4 @@ export function mondayOfWeek(d) {
   monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return monday;
 }
+export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // lunes → domingo (para selectores de días)
