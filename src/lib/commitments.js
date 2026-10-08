@@ -67,3 +67,22 @@ export function useCommitments() {
   }, []);
   return v;
 }
+
+export function isScheduled(habit, date) {
+  if (!habit) return false;
+  // Verifica si el hábito está programado para esa fecha o día de la semana
+  if (habit.scheduled_date) return habit.scheduled_date === date;
+  if (habit.days && Array.isArray(habit.days)) {
+    const dow = new Date(date).getDay();
+    return habit.days.includes(dow);
+  }
+  return true;
+}
+// Función para mover/adelantar la fecha de un hábito sin marcarlo completado
+export function moveHabitDay(habit, targetDate) {
+  if (!habit) return habit;
+  return {
+    ...habit,
+    scheduled_date: targetDate
+  };
+}

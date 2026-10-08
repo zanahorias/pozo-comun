@@ -8,7 +8,7 @@ import Training from './components/Training';
 import Shop from './components/Shop';
 import TabBar from './components/TabBar';
 import Onboarding from './components/Onboarding';
-import PointsFx from './components/PointsFx';
+import PointsFx from './components/PointsFx.jsx';
 import { userKey } from './lib/theme';
 import { useCommitments, hasCommitment } from './lib/commitments';
 
