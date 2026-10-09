@@ -30,6 +30,12 @@ jobs:
       - name: Agregar plataforma Android
         run: npx cap add android || true
 
+      # Genera los íconos de Arriba! (usa la carpeta resources/ del repo) dentro del proyecto Android.
+      # Si este paso falla, el APK se compila igual (con el ícono por defecto) y se ve el error en el log.
+      - name: Generar ícono de Arriba!
+        continue-on-error: true
+        run: npx --yes @capacitor/assets generate --android
+
       - name: Sincronizar Capacitor
         run: npx cap sync android
 
