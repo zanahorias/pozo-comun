@@ -7,9 +7,9 @@ import ExerciseImage from './ExerciseImage';
 import TimerTool from './TimerTool';
 import '../theme-q4.css';
 
-// El hábito de ejercicio vale H puntos. Cada ejercicio da una parte (60% de H repartido)
-// y al terminar la rutina el hábito se completa con el resto: el total del día = H.
-export const EXERCISE_SHARE = 0.6;
+// El hábito de ejercicio vale H puntos. Cada ejercicio da LO MISMO (80% de H repartido en partes
+// iguales) y al terminar la rutina el hábito se completa con el resto: el total del día = H.
+export const EXERCISE_SHARE = 0.8;
 const FALLBACK_PTS = 3;
 
 const x = (name, spec, en = '') => ({ name, spec, en });
@@ -598,13 +598,18 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
   const todayKey = dateKey(today());
   const gymDoneToday = !!gymHabit && habitLogs.some((e) => e.habit_id === gymHabit.id && e.user_id === uid && e.log_date === todayKey && e.points > 0);
   const doneInDay = day.ex.filter((e) => doneToday[e.name]).length;
-  const sharePts = gymHabit ? Math.floor((fullPts * EXERCISE_SHARE) / Math.max(1, day.ex.length)) : FALLBACK_PTS;
+  // Parte igual para todos los ejercicios (mínimo 1) y siempre dejando al menos 1 punto
+  // para el cierre de la rutina, así el total del día nunca supera el valor del hábito.
+  const nEx = Math.max(1, day.ex.length);
+  const sharePts = gymHabit
+    ? Math.max(1, Math.min(Math.floor((fullPts * EXERCISE_SHARE) / nEx), Math.floor((fullPts - 1) / nEx)))
+    : FALLBACK_PTS;
 
-  // Puntos que realmente suma completar este ejercicio ahora (el último incluye el resto del hábito).
-  const ptsFor = (ex) => {
+  // Puntos que suma completar este ejercicio (iguales para todos). El resto del hábito se suma
+  // una sola vez al terminar la rutina.
+  const ptsFor = () => {
     if (gymDoneToday || !gymHabit) return gymHabit ? 0 : sharePts;
-    const pending = day.ex.length - doneInDay;
-    return pending === 1 && !doneToday[ex.name] ? Math.max(1, fullPts - sharePts * doneInDay) : sharePts;
+    return sharePts;
   };
 
   // Suma puntos una sola vez por ejercicio y día (verifica antes de insertar).
@@ -669,7 +674,7 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
         await supabase.from('training_points').delete().eq('user_id', uid).eq('log_date', key).eq('kind', 'routine_done');
         if (gymHabit) {
           const { data: hl } = await supabase.from('habit_logs').select('points').eq('habit_id', gymHabit.id).eq('user_id', uid).eq('log_date', key).limit(1);
-          if (hl && hl[0] && hl[0].points > 0) await actions.toggleHabitToday(gymHabit, uid); // lo desmarca y revierte bonos
+          if (hl && hl[0] && hl[0].points > 0) await actions.toggleHabitToday(gymHabit, uid, { keepExercises: true }); // lo desmarca y revierte bonos
         }
       }
     }
@@ -748,7 +753,7 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
           <div className="bar-track" style={{ margin: '8px 0 14px' }}>
             <div className="bar-fill" style={{ width: `${(doneCount / Math.max(1, day.ex.length)) * 100}%` }} />
           </div>
-          <div className="hmeta" style={{ marginBottom: 10 }}>El hábito de ejercicio vale {fullPts || '—'} pts: se reparten entre los ejercicios y el resto se suma al terminar la rutina. Marcar el hábito a mano da lo mismo.</div>
+          <div className="hmeta" style={{ marginBottom: 10 }}>El hábito de ejercicio vale {fullPts || '—'} pts: se reparten en partes iguales entre los ejercicios ({sharePts} c/u) y el resto se suma al terminar la rutina. Marcar el hábito a mano da lo mismo.</div>
 
           {editing ? (
             <>

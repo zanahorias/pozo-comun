@@ -13,7 +13,20 @@ const notify = () => listeners.forEach((f) => f());
 export async function loadCommitments() {
   try {
     const { data, error } = await supabase.from('user_commitments').select('*');
-    if (!error && data) data.forEach((r) => { cache[r.user_id] = r.data; });
+    if (!error && data) {
+      data.forEach((r) => { cache[r.user_id] = r.data; });
+      // Compromisos que solo existían en este dispositivo: se suben a la nube para que
+      // no se vuelvan a pedir en otro teléfono o tras reinstalar.
+      try {
+        const inDb = new Set(data.map((r) => String(r.user_id)));
+        Object.keys(localStorage).filter((k) => k.startsWith(LS)).forEach((k) => {
+          const uid = k.slice(LS.length);
+          if (inDb.has(uid)) return;
+          const c = JSON.parse(localStorage.getItem(k) || 'null');
+          if (c) supabase.from('user_commitments').upsert({ user_id: uid, data: c }, { onConflict: 'user_id' }).then(() => {}, () => {});
+        });
+      } catch (e) { /* ignore */ }
+    }
   } catch (e) {
     console.warn('user_commitments no disponible, uso localStorage', e);
   }
@@ -37,10 +50,15 @@ export async function saveCommitment(uid, data, opts = {}) {
   cache[uid] = full;
   try { localStorage.setItem(LS + uid, JSON.stringify(full)); } catch (e) { /* ignore */ }
   notify();
+  // Devuelve { ok, error }: ok=false significa que quedó guardado solo en este dispositivo
+  // (por ejemplo si falta la tabla user_commitments en Supabase) y se volvería a pedir en otro.
   try {
-    await supabase.from('user_commitments').upsert({ user_id: uid, data: full }, { onConflict: 'user_id' });
+    const { error } = await supabase.from('user_commitments').upsert({ user_id: uid, data: full }, { onConflict: 'user_id' });
+    if (error) { console.warn('user_commitments', error); return { ok: false, error: error.message }; }
+    return { ok: true };
   } catch (e) {
     console.warn(e);
+    return { ok: false, error: String((e && e.message) || e) };
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "appId": "com.pozocomun.app",
-  "appName": "Pozo Común",
+  "appName": "Arriba!",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"

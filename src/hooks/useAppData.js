@@ -254,7 +254,7 @@ export function useAppData() {
     if (a || b || c) fetchAll();
   }
 
-  async function toggleHabitToday(habit, userId) {
+  async function toggleHabitToday(habit, userId, opts = {}) {
     const key = dateKey(today());
     // Se consulta la base (no el estado) para no actuar sobre datos viejos.
     const { data: fresh0 } = await supabase
@@ -264,6 +264,13 @@ export function useAppData() {
     if (existing && existing.points > 0) {
       await supabase.from('habit_logs').delete().eq('id', existing.id);
       await undoSharedDouble(habit, key, userId);
+      // Desmarcar el hábito de gym desmarca TODOS los ejercicios de hoy (y sus puntos).
+      if (habit.type === 'gym' && !opts.keepExercises) {
+        const t0 = today();
+        const dayStart = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate(), 4, 0, 0).toISOString();
+        await supabase.from('training_points').delete().eq('user_id', userId).eq('log_date', key).or('kind.like.ex_%,kind.eq.routine_done');
+        await supabase.from('workouts').delete().eq('user_id', userId).eq('type', 'strength').gte('created_at', dayStart);
+      }
     } else {
       let points = Math.round(habitValue(habit, userId, today(), habits) * currentMultiplier);
       if (habit.type === 'gym') {

@@ -44,7 +44,10 @@ export default function Onboarding({ user, habits, onDone, onCancel }) {
   async function save() {
     const habitDays = { ...days };
     gymHabits.forEach((h) => { habitDays[h.id] = train; });
-    await saveCommitment(user.id, { habitDays, trainDays: train.slice().sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b)) });
+    const res = await saveCommitment(user.id, { habitDays, trainDays: train.slice().sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b)) });
+    if (res && res.ok === false) {
+      window.alert('Tus compromisos se guardaron solo en este dispositivo (no se pudo guardar en la nube: ' + res.error + '). Si cambiás de teléfono o reinstalás la app, te los va a volver a pedir.');
+    }
     onDone();
   }
 
