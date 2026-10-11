@@ -112,12 +112,31 @@ export async function clearAllMoves() {
   const ids = Object.keys(cache);
   for (const uid of ids) {
     const c = cache[uid];
-    if (c && c.moves && c.moves.length) await saveCommitment(uid, { ...c, moves: [] }, { keepSince: true });
+    if (c && ((c.moves && c.moves.length) || (c.recoveries && c.recoveries.length))) await saveCommitment(uid, { ...c, moves: [], recoveries: [] }, { keepSince: true });
   }
   try {
     Object.keys(localStorage).filter((k) => k.startsWith(LS)).forEach((k) => {
       const c = JSON.parse(localStorage.getItem(k) || 'null');
-      if (c && c.moves) localStorage.setItem(k, JSON.stringify({ ...c, moves: [] }));
+      if (c && (c.moves || c.recoveries)) localStorage.setItem(k, JSON.stringify({ ...c, moves: [], recoveries: [] }));
     });
   } catch (e) { /* ignore */ }
+}
+
+// Recuperaciones pendientes: "Recuperar con hoy" NO suma nada al apretarlo; queda anotado y
+// se aplica cuando realmente se hace el hábito hoy. Forma: { habitId, missKey }.
+export function pendingRecovery(uid, habitId) {
+  return (getCommitment(uid)?.recoveries || []).find((r) => r.habitId === habitId) || null;
+}
+
+export async function setPendingRecovery(uid, habitId, missKey) {
+  const c = getCommitment(uid);
+  if (!c) return;
+  const rest = (c.recoveries || []).filter((r) => r.habitId !== habitId);
+  await saveCommitment(uid, { ...c, recoveries: [...rest, { habitId, missKey }] }, { keepSince: true });
+}
+
+export async function clearPendingRecovery(uid, habitId) {
+  const c = getCommitment(uid);
+  if (!c || !(c.recoveries || []).some((r) => r.habitId === habitId)) return;
+  await saveCommitment(uid, { ...c, recoveries: c.recoveries.filter((r) => r.habitId !== habitId) }, { keepSince: true });
 }
