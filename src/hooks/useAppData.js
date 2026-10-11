@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { dateKey, stripTime, today } from '../lib/dates';
+import { dateKey, mondayOfWeek, stripTime, today } from '../lib/dates';
 import { computeMissingRows, currentStreak, isPerfectDay, rewardScope, SCOPE } from '../lib/logic';
-import { loadCommitments, clearAllMoves } from '../lib/commitments';
-import { habitValue, BONUS_POINTS } from '../lib/economy';
+import { loadCommitments, clearAllMoves, isScheduled, pendingRecovery, setPendingRecovery, clearPendingRecovery } from '../lib/commitments';
+import { habitValue, BONUS_POINTS, EXTRA_SESSION_FACTOR } from '../lib/economy';
 
 const MONTH_START_KEY = () => {
   const t = today();
@@ -261,6 +261,11 @@ export function useAppData() {
       .from('habit_logs').select('id,points')
       .eq('habit_id', habit.id).eq('user_id', userId).eq('log_date', key).limit(1);
     const existing = fresh0 && fresh0[0];
+    // Día en que el hábito no corresponde + recuperación pendiente: marcarlo = recuperar el día perdido.
+    if (!isScheduled(habit, userId, today()) && (await applyPendingRecovery(habit, userId))) {
+      await afterHabitAction(userId, habit);
+      return;
+    }
     if (existing && existing.points > 0) {
       await supabase.from('habit_logs').delete().eq('id', existing.id);
       await undoSharedDouble(habit, key, userId);
@@ -312,14 +317,47 @@ export function useAppData() {
     await afterHabitAction(userId, habit);
   }
 
+  // Sesión extra (2.ª vez del día): máximo UNA por semana por hábito. Se guarda en
+  // training_points con kind 'extra_<id del hábito>'. Devuelve { ok, points, reason }.
+  async function grantExtraSession(habit, userId) {
+    const monday = dateKey(mondayOfWeek(today()));
+    const kind = 'extra_' + habit.id;
+    const { data: used } = await supabase
+      .from('training_points').select('id').eq('user_id', userId).eq('kind', kind).gte('log_date', monday).limit(1);
+    if (used && used.length) return { ok: false, points: 0, reason: 'Ya usaste la sesión extra de este hábito esta semana (se renueva el lunes).' };
+    const points = Math.max(1, Math.round(habitValue(habit, userId, today(), habits) * EXTRA_SESSION_FACTOR * currentMultiplier));
+    const { error: err } = await supabase.from('training_points').insert([{ user_id: userId, kind, points, log_date: dateKey(today()) }]);
+    if (err) return { ok: false, points: 0, reason: 'No se pudo guardar la sesión extra: ' + err.message };
+    return { ok: true, points };
+  }
+
+  // Botón "Sesión extra" de la tarjeta del hábito (para hábitos que no son cardio).
+  async function extraSession(habit, userId) {
+    const key = dateKey(today());
+    const { data } = await supabase
+      .from('habit_logs').select('points').eq('habit_id', habit.id).eq('user_id', userId).eq('log_date', key).limit(1);
+    if (!(data && data[0] && data[0].points > 0)) {
+      return { ok: false, points: 0, reason: 'Primero completá el hábito hoy; la sesión extra es la segunda vez.' };
+    }
+    const res = await grantExtraSession(habit, userId);
+    if (res.ok) await afterHabitAction(userId, habit);
+    return res;
+  }
+
   async function autoCompleteHabitByType(type, userId) {
     const habit = habits.find((h) => h.type === type);
     if (!habit) return;
     const key = dateKey(today());
-    const existing = habitLogs.find(
-      (e) => e.habit_id === habit.id && e.user_id === userId && e.log_date === key
-    );
-    if (existing && existing.points > 0) return;
+    // Se consulta la base (no el estado) para no actuar sobre datos viejos entre dos sesiones seguidas.
+    const { data: ex0 } = await supabase
+      .from('habit_logs').select('id,points')
+      .eq('habit_id', habit.id).eq('user_id', userId).eq('log_date', key).limit(1);
+    const existing = ex0 && ex0[0];
+    // Una sesión real hoy con recuperación pendiente: esa sesión recupera el día perdido.
+    // Una sesión extra después sí suma lo de hoy (más sesiones = más puntos).
+    if (!isScheduled(habit, userId, today()) && (await applyPendingRecovery(habit, userId))) return null;
+    // Ya contaba hoy: esta es la 2.ª sesión del día → sesión extra (1 por semana).
+    if (existing && existing.points > 0) return { extra: await grantExtraSession(habit, userId) };
     const points = Math.round(habitValue(habit, userId, today(), habits) * currentMultiplier);
     await supabase.from('habit_logs').upsert(
       [{ habit_id: habit.id, user_id: userId, log_date: key, points, amount: null }],
@@ -341,9 +379,10 @@ export function useAppData() {
     await supabase.from('workouts').insert([
       { user_id: userId, type: 'cardio', exercise_name: activity, duration_min: durationMin, distance_km: distanceKm }
     ]);
-    await autoCompleteHabitByType('run', userId);
+    const res = await autoCompleteHabitByType('run', userId);
     const habit = habits.find((h) => h.type === 'run');
     await afterHabitAction(userId, habit);
+    return res || null;
   }
 
   async function redeem(reward, userId) {
@@ -384,9 +423,30 @@ export function useAppData() {
     fetchAll();
   }
 
-  async function recoverHabitDay(entry, habit) {
-    await supabase.from('habit_logs').update({ points: habitValue(habit, entry.user_id, new Date(entry.log_date + 'T00:00:00'), habits), amount: null }).eq('id', entry.id);
-    fetchAll();
+  // "Recuperar con hoy" solo deja la recuperación PENDIENTE (no suma nada).
+  async function requestRecovery(entry, habit) {
+    await setPendingRecovery(entry.user_id, habit.id, entry.log_date);
+  }
+
+  async function cancelRecovery(habit, userId) {
+    await clearPendingRecovery(userId, habit.id);
+  }
+
+  // Se llama cuando el hábito se hace de verdad hoy: si había una recuperación pendiente,
+  // el día perdido pasa a sumar. Devuelve true si se aplicó (esa vez ya no cuenta el de hoy).
+  async function applyPendingRecovery(habit, userId) {
+    const pend = pendingRecovery(userId, habit.id);
+    if (!pend) return false;
+    const { data } = await supabase
+      .from('habit_logs').select('id,points')
+      .eq('habit_id', habit.id).eq('user_id', userId).eq('log_date', pend.missKey).limit(1);
+    const row = data && data[0];
+    await clearPendingRecovery(userId, habit.id);
+    if (!row || row.points > 0 || pend.missKey >= dateKey(today())) return false;
+    await supabase.from('habit_logs')
+      .update({ points: habitValue(habit, userId, new Date(pend.missKey + 'T00:00:00'), habits), amount: null })
+      .eq('id', row.id);
+    return true;
   }
 
   async function setGoal(title, targetPoints, rewardText) {
@@ -484,7 +544,9 @@ export function useAppData() {
       deleteReward,
       updateReward,
       updateHabit,
-      recoverHabitDay,
+      requestRecovery,
+      extraSession,
+      cancelRecovery,
       setGoal,
       clearGoal,
       resetAllProgress

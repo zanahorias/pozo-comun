@@ -401,10 +401,12 @@ function Cardio({ users, uid, actions, logs, reload, onSaved }) {
     const k = Number(km) || 0;
     if (m <= 0 || saving) return;
     setSaving(true);
-    await actions.logRun(uid, m, k, act);
+    const res = await actions.logRun(uid, m, k, act);
     await reload();
     setSaving(false);
-    onSaved(`${current.icon} ${act} registrado · ${m} min${k ? ` · ${k} km` : ''}`);
+    const ex = res && res.extra;
+    const extraMsg = ex ? (ex.ok ? ` · sesión extra +${ex.points} pts` : ` · ${ex.reason}`) : '';
+    onSaved(`${current.icon} ${act} registrado · ${m} min${k ? ` · ${k} km` : ''}${extraMsg}`);
     setKm('');
   }
 

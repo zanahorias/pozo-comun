@@ -5,8 +5,8 @@ import {
   incompleteToday, nextReminder, habitLabel, findAdvanceTarget, jokerState
 } from '../lib/logic';
 import { supabase } from '../lib/supabase';
-import { habitDays, isScheduled, moveHabitDay, getCommitment, saveCommitment } from '../lib/commitments';
-import { habitValue } from '../lib/economy';
+import { habitDays, isScheduled, moveHabitDay, getCommitment, saveCommitment, pendingRecovery } from '../lib/commitments';
+import { habitValue, EXTRA_SESSION_FACTOR } from '../lib/economy';
 import '../theme-q4.css';
 
 const DEFAULT_NEW_POINTS = 5;
@@ -281,7 +281,7 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
   function recover(h) {
     const entry = findRecoverableMiss(h, currentUser.id, habitLogs, trackingStartDate);
     if (!entry || entry.log_date >= dateKey(today())) return;
-    actions.recoverHabitDay(entry, h);
+    actions.requestRecovery(entry, h);
   }
 
   // Cambiar los días desde "editar" = cambiar TU compromiso con ese hábito (y, si es el
@@ -382,6 +382,7 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
         const status = scheduledToday ? habitDayStatus(h, t, currentUser.id, habitLogs, trackingStartDate) : 'none';
         const done = status === 'done';
         const recoverable = findRecoverableMiss(h, currentUser.id, habitLogs, trackingStartDate);
+        const pendingRec = recoverable ? pendingRecovery(currentUser.id, h.id) : null;
         const advanceDate = findAdvanceTarget(h, currentUser.id, habitLogs, trackingStartDate);
         const jokerTarget = jokers > 0 ? findJokerTarget(h, currentUser.id, habitLogs, trackingStartDate) : null;
         const todayEntry = habitLogs.find((e) => e.habit_id === h.id && e.user_id === currentUser.id && e.log_date === dateKey(t));
@@ -389,8 +390,8 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
           <div className={'habit-card' + (done ? ' is-done' : '')} key={h.id}>
             <div className="habit-row">
               <div
-                className={'check ' + (done ? 'done ' : '') + (scheduledToday ? '' : 'disabled')}
-                onClick={() => scheduledToday && actions.toggleHabitToday(h, currentUser.id)}
+                className={'check ' + (done ? 'done ' : '') + (scheduledToday || pendingRec ? '' : 'disabled')}
+                onClick={() => (scheduledToday || pendingRec) && actions.toggleHabitToday(h, currentUser.id)}
               >
                 {done ? '✓' : ''}
               </div>
@@ -405,10 +406,30 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
                 <button className="rm" onClick={() => window.confirm(`¿Eliminar "${habitLabel(h)}"?`) && actions.deleteHabit(h.id)}>✕</button>
               )}
             </div>
-            {recoverable && (
+            {recoverable && !pendingRec && (
               <div className="recover-row">
-                <span>Tenés un día perdido esta semana en "{habitLabel(h)}".</span>
+                <span>Tenés un día perdido esta semana en "{habitLabel(h)}". Si lo hacés hoy, lo recuperás.</span>
                 <button className="btn btn-ghost btn-small" onClick={() => recover(h)}>Recuperar con hoy</button>
+              </div>
+            )}
+            {recoverable && pendingRec && (
+              <div className="recover-row">
+                <span>
+                  Recuperación pendiente: hacelo hoy{h.type === 'run' ? ' (registralo en Cardio)' : h.type === 'gym' ? ' (completá la rutina)' : ''} y marcalo ✓ para recuperar el día perdido. No suma hasta que lo hagas.
+                </span>
+                <button className="btn btn-ghost btn-small" onClick={() => actions.cancelRecovery(h, currentUser.id)}>Cancelar</button>
+              </div>
+            )}
+            {done && h.kind === 'boolean' && h.type !== 'run' && (
+              <div className="recover-row">
+                <span>¿Lo hiciste una 2.ª vez hoy? Cuenta como sesión extra (1 por semana).</span>
+                <button
+                  className="btn btn-ghost btn-small"
+                  onClick={async () => {
+                    const r = await actions.extraSession(h, currentUser.id);
+                    if (r && !r.ok) window.alert(r.reason);
+                  }}
+                >➕ Sesión extra +{Math.max(1, Math.round(habitValue(h, currentUser.id, t, habits) * EXTRA_SESSION_FACTOR * mult))}</button>
               </div>
             )}
             {advanceDate && (

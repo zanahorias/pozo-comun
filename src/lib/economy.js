@@ -74,3 +74,7 @@ export function habitValue(habit, uid, dateObj, habits = []) {
   const n = Array.isArray(days) && days.length ? days.length : defaultDays(habit);
   return valueForDays(habit, n, habits);
 }
+
+// Sesión extra: se puede hacer un hábito hasta 2 veces en el día, pero la 2.ª solo cuenta
+// UNA vez por semana por hábito (lunes a domingo). Vale este porcentaje de una cumplida normal.
+export const EXTRA_SESSION_FACTOR = 0.5;
