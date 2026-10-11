@@ -472,6 +472,7 @@ export function useAppData() {
     error,
     fetchMonthLogs,
     actions: {
+      refresh: fetchAll,
       toggleHabitToday,
       addQuantity,
       logGym,

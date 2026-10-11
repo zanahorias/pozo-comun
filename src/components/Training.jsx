@@ -648,6 +648,8 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
     if (sharePts > 0) {
       const err = await award('ex_' + slug(ex.name), sharePts);
       msg = err ? `⚠️ ${ex.name} guardado, pero no sumó puntos: ${err}` : `+${sharePts} pts · ${ex.name} ✓`;
+      // Los totales ya se habían actualizado antes de guardar estos puntos: se refrescan ahora.
+      await actions.refresh();
     } else {
       msg = `${ex.name} ✓`;
     }
@@ -679,6 +681,7 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
       }
     }
     await refreshDone();
+    await actions.refresh();
     flash(`↩ ${ex.name} desmarcado`);
   }
 
