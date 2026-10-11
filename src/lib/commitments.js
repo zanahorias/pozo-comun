@@ -112,12 +112,12 @@ export async function clearAllMoves() {
   const ids = Object.keys(cache);
   for (const uid of ids) {
     const c = cache[uid];
-    if (c && ((c.moves && c.moves.length) || (c.recoveries && c.recoveries.length))) await saveCommitment(uid, { ...c, moves: [], recoveries: [] }, { keepSince: true });
+    if (c && ((c.moves && c.moves.length) || (c.recoveries && c.recoveries.length) || (c.extras && c.extras.length))) await saveCommitment(uid, { ...c, moves: [], recoveries: [], extras: [] }, { keepSince: true });
   }
   try {
     Object.keys(localStorage).filter((k) => k.startsWith(LS)).forEach((k) => {
       const c = JSON.parse(localStorage.getItem(k) || 'null');
-      if (c && (c.moves || c.recoveries)) localStorage.setItem(k, JSON.stringify({ ...c, moves: [], recoveries: [] }));
+      if (c && (c.moves || c.recoveries || c.extras)) localStorage.setItem(k, JSON.stringify({ ...c, moves: [], recoveries: [], extras: [] }));
     });
   } catch (e) { /* ignore */ }
 }
@@ -139,4 +139,25 @@ export async function clearPendingRecovery(uid, habitId) {
   const c = getCommitment(uid);
   if (!c || !(c.recoveries || []).some((r) => r.habitId === habitId)) return;
   await saveCommitment(uid, { ...c, recoveries: c.recoveries.filter((r) => r.habitId !== habitId) }, { keepSince: true });
+}
+
+// Sesión extra de gym ACTIVA: en vez de sumar directo, se hace la siguiente rutina y recién
+// al completarla suma. Forma: { habitId, date, token } (el token separa una sesión de otra).
+export function pendingExtra(uid, habitId) {
+  const k = dateKey(today());
+  return (getCommitment(uid)?.extras || []).find((e) => e.habitId === habitId && e.date === k) || null;
+}
+
+export async function setPendingExtra(uid, habitId) {
+  const c = getCommitment(uid);
+  if (!c) return;
+  const k = dateKey(today());
+  const rest = (c.extras || []).filter((e) => e.habitId !== habitId && e.date === k);
+  await saveCommitment(uid, { ...c, extras: [...rest, { habitId, date: k, token: Date.now() }] }, { keepSince: true });
+}
+
+export async function clearPendingExtra(uid, habitId) {
+  const c = getCommitment(uid);
+  if (!c || !(c.extras || []).some((e) => e.habitId === habitId)) return;
+  await saveCommitment(uid, { ...c, extras: c.extras.filter((e) => e.habitId !== habitId) }, { keepSince: true });
 }

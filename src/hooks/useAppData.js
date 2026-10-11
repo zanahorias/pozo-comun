@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { dateKey, mondayOfWeek, stripTime, today } from '../lib/dates';
 import { computeMissingRows, currentStreak, isPerfectDay, rewardScope, SCOPE } from '../lib/logic';
-import { loadCommitments, clearAllMoves, isScheduled, pendingRecovery, setPendingRecovery, clearPendingRecovery } from '../lib/commitments';
+import { loadCommitments, clearAllMoves, isScheduled, pendingRecovery, setPendingRecovery, clearPendingRecovery, setPendingExtra, clearPendingExtra } from '../lib/commitments';
 import { habitValue, BONUS_POINTS, EXTRA_SESSION_FACTOR } from '../lib/economy';
 
 const MONTH_START_KEY = () => {
@@ -269,6 +269,9 @@ export function useAppData() {
     if (existing && existing.points > 0) {
       await supabase.from('habit_logs').delete().eq('id', existing.id);
       await undoSharedDouble(habit, key, userId);
+      // Si había una sesión extra de hoy de este hábito, se va con él.
+      await supabase.from('training_points').delete().eq('user_id', userId).eq('log_date', key).eq('kind', 'extra_' + habit.id);
+      await clearPendingExtra(userId, habit.id);
       // Desmarcar el hábito de gym desmarca TODOS los ejercicios de hoy (y sus puntos).
       if (habit.type === 'gym' && !opts.keepExercises) {
         const t0 = today();
@@ -319,27 +322,60 @@ export function useAppData() {
 
   // Sesión extra (2.ª vez del día): máximo UNA por semana por hábito. Se guarda en
   // training_points con kind 'extra_<id del hábito>'. Devuelve { ok, points, reason }.
-  async function grantExtraSession(habit, userId) {
+  const EXTRA_USED_MSG = 'Ya usaste la sesión extra de este hábito esta semana (se renueva el lunes).';
+  async function extraUsedThisWeek(habit, userId) {
     const monday = dateKey(mondayOfWeek(today()));
-    const kind = 'extra_' + habit.id;
     const { data: used } = await supabase
-      .from('training_points').select('id').eq('user_id', userId).eq('kind', kind).gte('log_date', monday).limit(1);
-    if (used && used.length) return { ok: false, points: 0, reason: 'Ya usaste la sesión extra de este hábito esta semana (se renueva el lunes).' };
+      .from('training_points').select('id').eq('user_id', userId).eq('kind', 'extra_' + habit.id).gte('log_date', monday).limit(1);
+    return !!(used && used.length);
+  }
+
+  async function grantExtraSession(habit, userId) {
+    if (await extraUsedThisWeek(habit, userId)) return { ok: false, points: 0, reason: EXTRA_USED_MSG };
     const points = Math.max(1, Math.round(habitValue(habit, userId, today(), habits) * EXTRA_SESSION_FACTOR * currentMultiplier));
-    const { error: err } = await supabase.from('training_points').insert([{ user_id: userId, kind, points, log_date: dateKey(today()) }]);
+    const { error: err } = await supabase.from('training_points').insert([{ user_id: userId, kind: 'extra_' + habit.id, points, log_date: dateKey(today()) }]);
     if (err) return { ok: false, points: 0, reason: 'No se pudo guardar la sesión extra: ' + err.message };
     return { ok: true, points };
   }
 
-  // Botón "Sesión extra" de la tarjeta del hábito (para hábitos que no son cardio).
-  async function extraSession(habit, userId) {
-    const key = dateKey(today());
+  // ¿Ya completó el hábito hoy? (por cantidad: la meta entera; los demás: cumplido)
+  async function habitCompletedToday(habit, userId) {
     const { data } = await supabase
-      .from('habit_logs').select('points').eq('habit_id', habit.id).eq('user_id', userId).eq('log_date', key).limit(1);
-    if (!(data && data[0] && data[0].points > 0)) {
+      .from('habit_logs').select('points,amount')
+      .eq('habit_id', habit.id).eq('user_id', userId).eq('log_date', dateKey(today())).limit(1);
+    const row = data && data[0];
+    if (!row) return false;
+    return habit.kind === 'quantity' ? Number(row.amount) >= Number(habit.target) : row.points > 0;
+  }
+
+  // Botón "Sesión extra" de hábitos que suman directo (por cantidad y personalizados).
+  async function extraSession(habit, userId) {
+    if (!(await habitCompletedToday(habit, userId))) {
       return { ok: false, points: 0, reason: 'Primero completá el hábito hoy; la sesión extra es la segunda vez.' };
     }
     const res = await grantExtraSession(habit, userId);
+    if (res.ok) await afterHabitAction(userId, habit);
+    return res;
+  }
+
+  // Gym: la sesión extra NO suma directo. Se activa y trae la siguiente rutina en Entrenamiento;
+  // suma recién cuando se completa (finishExtraSession).
+  async function startExtraSession(habit, userId) {
+    if (!(await habitCompletedToday(habit, userId))) {
+      return { ok: false, reason: 'Primero completá el hábito hoy; la sesión extra es la segunda vez.' };
+    }
+    if (await extraUsedThisWeek(habit, userId)) return { ok: false, reason: EXTRA_USED_MSG };
+    await setPendingExtra(userId, habit.id);
+    return { ok: true };
+  }
+
+  async function cancelExtraSession(habit, userId) {
+    await clearPendingExtra(userId, habit.id);
+  }
+
+  async function finishExtraSession(habit, userId) {
+    const res = await grantExtraSession(habit, userId);
+    await clearPendingExtra(userId, habit.id);
     if (res.ok) await afterHabitAction(userId, habit);
     return res;
   }
@@ -546,6 +582,9 @@ export function useAppData() {
       updateHabit,
       requestRecovery,
       extraSession,
+      startExtraSession,
+      cancelExtraSession,
+      finishExtraSession,
       cancelRecovery,
       setGoal,
       clearGoal,

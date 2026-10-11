@@ -5,7 +5,7 @@ import {
   incompleteToday, nextReminder, habitLabel, findAdvanceTarget, jokerState
 } from '../lib/logic';
 import { supabase } from '../lib/supabase';
-import { habitDays, isScheduled, moveHabitDay, getCommitment, saveCommitment, pendingRecovery } from '../lib/commitments';
+import { habitDays, isScheduled, moveHabitDay, getCommitment, saveCommitment, pendingRecovery, pendingExtra } from '../lib/commitments';
 import { habitValue, EXTRA_SESSION_FACTOR } from '../lib/economy';
 import '../theme-q4.css';
 
@@ -363,6 +363,18 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
                 {scheduledToday ? (
                   <>
                     <QtyControls habit={h} onAdd={(delta) => actions.addQuantity(h, currentUser.id, delta)} />
+                    {pct >= 100 && (
+                      <div className="recover-row" style={{ marginTop: 8 }}>
+                        <span>¿Repetiste la meta hoy? Cuenta como sesión extra (1 por semana).</span>
+                        <button
+                          className="btn btn-ghost btn-small"
+                          onClick={async () => {
+                            const r = await actions.extraSession(h, currentUser.id);
+                            if (r && !r.ok) window.alert(r.reason);
+                          }}
+                        >➕ Sesión extra +{Math.max(1, Math.round(habitValue(h, currentUser.id, t, habits) * EXTRA_SESSION_FACTOR * mult))}</button>
+                      </div>
+                    )}
                     {pct < 100 && (
                       <button className="btn btn-primary btn-small" style={{ marginTop: 8, width: '100%' }} onClick={() => actions.addQuantity(h, currentUser.id, h.target - amount)}>✓ Marcar meta como hecha</button>
                     )}
@@ -420,7 +432,25 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
                 <button className="btn btn-ghost btn-small" onClick={() => actions.cancelRecovery(h, currentUser.id)}>Cancelar</button>
               </div>
             )}
-            {done && h.kind === 'boolean' && h.type !== 'run' && (
+            {done && h.kind === 'boolean' && h.type === 'gym' && !pendingExtra(currentUser.id, h.id) && (
+              <div className="recover-row">
+                <span>¿Querés hacer otra rutina hoy? Es una sesión extra (1 por semana): te trae la siguiente rutina y suma al completarla.</span>
+                <button
+                  className="btn btn-ghost btn-small"
+                  onClick={async () => {
+                    const r = await actions.startExtraSession(h, currentUser.id);
+                    if (r && !r.ok) window.alert(r.reason);
+                  }}
+                >➕ Sesión extra</button>
+              </div>
+            )}
+            {h.type === 'gym' && pendingExtra(currentUser.id, h.id) && (
+              <div className="recover-row">
+                <span>Sesión extra activa: andá a Entrenamiento y completá la siguiente rutina. Suma recién al terminarla.</span>
+                <button className="btn btn-ghost btn-small" onClick={() => actions.cancelExtraSession(h, currentUser.id)}>Cancelar</button>
+              </div>
+            )}
+            {done && h.kind === 'boolean' && h.type !== 'run' && h.type !== 'gym' && (
               <div className="recover-row">
                 <span>¿Lo hiciste una 2.ª vez hoy? Cuenta como sesión extra (1 por semana).</span>
                 <button

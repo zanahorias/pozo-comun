@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { dateKey, fmtShort, today, DOW_LABELS } from '../lib/dates';
 import { supabase } from '../lib/supabase';
-import { trainDaysOf, getCommitment } from '../lib/commitments';
-import { habitValue } from '../lib/economy';
+import { trainDaysOf, getCommitment, pendingExtra } from '../lib/commitments';
+import { habitValue, EXTRA_SESSION_FACTOR } from '../lib/economy';
 import ExerciseImage from './ExerciseImage';
 import TimerTool from './TimerTool';
 import '../theme-q4.css';
@@ -183,7 +183,7 @@ function useDoneToday(userId) {
 // ---------------------------------------------------------------------------
 // Tarjeta de ejercicio (se achica al completarlo)
 // ---------------------------------------------------------------------------
-function RoutineExercise({ ex, uid, lastSets, doneSets, pts, noPtsReason = '', onComplete, onUncomplete }) {
+function RoutineExercise({ ex, uid, lastSets, doneSets, pts, noPtsReason = '', autoDone = false, onComplete, onUncomplete }) {
   const spec = parseSpec(ex.spec);
   const build = () =>
     Array.from({ length: spec.sets }, (_, i) => {
@@ -207,6 +207,20 @@ function RoutineExercise({ ex, uid, lastSets, doneSets, pts, noPtsReason = '', o
     await onComplete(ex, sets);
     setSaving(false);
     setReopened(false);
+  }
+
+  // Completado con el hábito (marcado a mano o desde Hábitos): se ve hecho y achicado.
+  if (autoDone && !finished && !reopened) {
+    return (
+      <div className="ex-collapsed">
+        <span className="ex-check">✓</span>
+        <div className="ex-collapsed-name">
+          {ex.name}
+          <small>completado con el hábito</small>
+        </div>
+        <button className="btn btn-ghost btn-small" onClick={() => setReopened(true)}>Ver</button>
+      </div>
+    );
   }
 
   if (finished) {
@@ -605,7 +619,7 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
     const dow = today().getDay();
     for (let k = 1; k <= 7; k++) {
       const i = myDays.indexOf((dow + k) % 7);
-      if (i >= 0) return { name: NAMES[(dow + k) % 7], title: days[i]?.title };
+      if (i >= 0) return { name: NAMES[(dow + k) % 7], title: days[i]?.title, idx: i };
     }
     return null;
   })();
@@ -617,6 +631,40 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
   const todayKey = dateKey(today());
   const gymDoneToday = !!gymHabit && habitLogs.some((e) => e.habit_id === gymHabit.id && e.user_id === uid && e.log_date === todayKey && e.points > 0);
   const doneInDay = day.ex.filter((e) => doneToday[e.name]).length;
+
+  // --- Sesión extra de gym: trae la SIGUIENTE rutina; suma recién al completarla ---
+  const extraEntry = gymHabit ? pendingExtra(uid, gymHabit.id) : null;
+  const extraActive = !!extraEntry && gymDoneToday;
+  const extraKey = extraEntry ? `arriba-extra-${uid}-${extraEntry.token}` : null;
+  const [extraDone, setExtraDone] = useState({});
+  useEffect(() => {
+    try { setExtraDone(extraKey ? JSON.parse(localStorage.getItem(extraKey) || '{}') : {}); } catch (e) { setExtraDone({}); }
+  }, [extraKey]);
+  const saveExtraDone = (m) => {
+    setExtraDone(m);
+    if (extraKey) { try { localStorage.setItem(extraKey, JSON.stringify(m)); } catch (e) { /* ignore */ } }
+  };
+  const extraIdx = days.length ? (restDay ? (nextTrain?.idx ?? 0) : (shownIdx + 1) % days.length) : 0;
+  const extraDay = days[Math.max(0, Math.min(extraIdx, days.length - 1))];
+  const extraPts = gymHabit ? Math.max(1, Math.round(habitValue(gymHabit, uid, today(), habits) * EXTRA_SESSION_FACTOR * (currentMultiplier || 1))) : 0;
+  const extraCount = extraDay ? extraDay.ex.filter((e) => extraDone[e.name]).length : 0;
+
+  async function completeExtraExercise(ex, sets) {
+    await actions.logGym(uid, ex.name, sets); // queda en el historial
+    const next = { ...extraDone, [ex.name]: { sets } };
+    saveExtraDone(next);
+    if (extraDay.ex.every((e) => next[e.name])) {
+      const res = await actions.finishExtraSession(gymHabit, uid);
+      flash(res.ok ? `🎉 Sesión extra completa · +${res.points} pts` : res.reason);
+    } else {
+      flash(`${ex.name} ✓ (sesión extra)`);
+    }
+  }
+  function uncompleteExtraExercise(ex) {
+    const next = { ...extraDone };
+    delete next[ex.name];
+    saveExtraDone(next);
+  }
   // Parte igual para todos los ejercicios (mínimo 1) y siempre dejando al menos 1 punto
   // para el cierre de la rutina, así el total del día nunca supera el valor del hábito.
   const nEx = Math.max(1, day.ex.length);
@@ -711,7 +759,7 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
   const removeEx = (i) => saveDay(day.ex.filter((_, k) => k !== i));
   const addEx = () => saveDay([...day.ex, x('Nuevo ejercicio', '3x12', '')]);
 
-  const doneCount = day.ex.filter((e) => doneToday[e.name]).length;
+  const doneCount = gymDoneToday ? day.ex.length : day.ex.filter((e) => doneToday[e.name]).length;
 
   return (
     <section className="screen active">
@@ -799,18 +847,38 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
                   <div className="flabel" style={{ marginTop: 6 }}>🦶 Bloque fijo de tobillo (pre-rutina)</div>
                   {routine.pre.map((ex) => (
                     <RoutineExercise key={'pre-' + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]?.sets}
-                      pts={0} noPtsReason="calentamiento" onComplete={(e, s) => completeExercise(e, s, true)} onUncomplete={() => uncompleteExercise(ex, true)} />
+                      pts={0} noPtsReason="calentamiento" autoDone={gymDoneToday && !doneToday[ex.name]} onComplete={(e, s) => completeExercise(e, s, true)} onUncomplete={() => uncompleteExercise(ex, true)} />
                   ))}
                   <div className="flabel" style={{ marginTop: 14 }}>Rutina</div>
                 </>
               )}
               {day.ex.map((ex) => (
                 <RoutineExercise key={day.title + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={doneToday[ex.name]?.sets}
-                  pts={ptsFor(ex)} noPtsReason={gymDoneToday ? 'el hábito ya está completo' : ''} onComplete={(e, s) => completeExercise(e, s, false)} onUncomplete={() => uncompleteExercise(ex, false)} />
+                  pts={ptsFor(ex)} noPtsReason={gymDoneToday ? 'el hábito ya está completo' : ''} autoDone={gymDoneToday && !doneToday[ex.name]} onComplete={(e, s) => completeExercise(e, s, false)} onUncomplete={() => uncompleteExercise(ex, false)} />
               ))}
             </>
           )}
           </>
+          )}
+
+          {extraActive && extraDay && (
+            <div style={{ marginTop: 20 }}>
+              <div className="log-card rest-card">
+                <div className="lname">➕ Sesión extra · {extraDay.title}</div>
+                <div className="hmeta" style={{ marginTop: 4 }}>
+                  Completá esta rutina para sumar la sesión extra (+{extraPts} pts, una por semana). Los ejercicios no suman por separado.
+                </div>
+                <div className="bar-track" style={{ margin: '8px 0' }}>
+                  <div className="bar-fill" style={{ width: `${(extraCount / Math.max(1, extraDay.ex.length)) * 100}%` }} />
+                </div>
+                <div className="hmeta">{extraCount}/{extraDay.ex.length} ejercicios</div>
+                <button className="btn btn-ghost btn-small" style={{ marginTop: 8 }} onClick={() => actions.cancelExtraSession(gymHabit, uid)}>Cancelar sesión extra</button>
+              </div>
+              {extraDay.ex.map((ex) => (
+                <RoutineExercise key={'extra-' + extraDay.title + ex.name} ex={ex} uid={uid} lastSets={last[ex.name]} doneSets={extraDone[ex.name]?.sets}
+                  pts={0} noPtsReason="sesión extra" onComplete={(e, st) => completeExtraExercise(e, st)} onUncomplete={() => uncompleteExtraExercise(ex)} />
+              ))}
+            </div>
           )}
         </div>
       )}
