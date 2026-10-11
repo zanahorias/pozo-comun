@@ -7,6 +7,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { habitDays, isScheduled, moveHabitDay, getCommitment, saveCommitment, pendingRecovery, pendingExtra } from '../lib/commitments';
 import { habitValue, EXTRA_SESSION_FACTOR } from '../lib/economy';
+import AdminRecords from './AdminRecords';
 import '../theme-q4.css';
 
 const DEFAULT_NEW_POINTS = 5;
@@ -246,7 +247,7 @@ function HabitEditForm({ habit, uid, isAdmin, onSave, onCancel }) {
   );
 }
 
-export default function Habits({ onEditCommitments, currentMultiplier = 1, habits, habitLogs, currentUser, isAdmin, actions, trackingStartDate }) {
+export default function Habits({ users = [], onEditCommitments, currentMultiplier = 1, habits, habitLogs, currentUser, isAdmin, actions, trackingStartDate }) {
   const t = today();
   const [editingId, setEditingId] = useState(null);
   const [jokers, refreshJokers, nextJoker] = useJokerBalance(currentUser.id, [habitLogs]);
@@ -363,18 +364,11 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
                 {scheduledToday ? (
                   <>
                     <QtyControls habit={h} onAdd={(delta) => actions.addQuantity(h, currentUser.id, delta)} />
-                    {pct >= 100 && (
-                      <div className="recover-row" style={{ marginTop: 8 }}>
-                        <span>¿Repetiste la meta hoy? Cuenta como sesión extra (1 por semana).</span>
-                        <button
-                          className="btn btn-ghost btn-small"
-                          onClick={async () => {
-                            const r = await actions.extraSession(h, currentUser.id);
-                            if (r && !r.ok) window.alert(r.reason);
-                          }}
-                        >➕ Sesión extra +{Math.max(1, Math.round(habitValue(h, currentUser.id, t, habits) * EXTRA_SESSION_FACTOR * mult))}</button>
-                      </div>
-                    )}
+                    <div className="hmeta" style={{ marginTop: 6 }}>
+                      {amount > h.target
+                        ? '✨ Superaste la meta de hoy: cuenta como sesión extra (1 por semana).'
+                        : 'Si superás la meta del día, cuenta como sesión extra (1 por semana).'}
+                    </div>
                     {pct < 100 && (
                       <button className="btn btn-primary btn-small" style={{ marginTop: 8, width: '100%' }} onClick={() => actions.addQuantity(h, currentUser.id, h.target - amount)}>✓ Marcar meta como hecha</button>
                     )}
@@ -498,6 +492,8 @@ export default function Habits({ onEditCommitments, currentMultiplier = 1, habit
           </div>
         </div>
       )}
+
+      {isAdmin && <AdminRecords users={users} habits={habits} defaultUserId={currentUser.id} actions={actions} />}
 
       {isAdmin && <HabitCreateForm onAdd={actions.addHabit} isAdmin={isAdmin} />}
 

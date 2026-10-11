@@ -134,6 +134,7 @@ export default function App() {
         )}
         {screen === 'habits' && (
           <Habits
+            users={users}
             habits={habits}
             habitLogs={habitLogs}
             currentUser={currentUser}

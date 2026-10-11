@@ -307,6 +307,7 @@ export function useAppData() {
     if (next <= 0) {
       if (existing) await supabase.from('habit_logs').delete().eq('id', existing.id);
       if (marked) await undoSharedDouble(habit, key, userId);
+      await supabase.from('training_points').delete().eq('user_id', userId).eq('log_date', key).eq('kind', 'extra_' + habit.id);
     } else {
       const basePts = Math.round(habitValue(habit, userId, today(), habits) * Math.min(1, next / habit.target));
       let pts = Math.round(basePts * currentMultiplier);
@@ -316,6 +317,13 @@ export function useAppData() {
         { onConflict: 'habit_id,user_id,log_date' }
       );
       if (marked && next < habit.target) await undoSharedDouble(habit, key, userId);
+      // Superar la meta del día cuenta como sesión extra (1 por semana). Si se baja de nuevo
+      // a la meta o menos, la sesión extra de hoy se quita (suma y resta lo mismo).
+      if (next > habit.target) {
+        await grantExtraSession(habit, userId);
+      } else {
+        await supabase.from('training_points').delete().eq('user_id', userId).eq('log_date', key).eq('kind', 'extra_' + habit.id);
+      }
     }
     await afterHabitAction(userId, habit);
   }
@@ -378,6 +386,89 @@ export function useAppData() {
     await clearPendingExtra(userId, habit.id);
     if (res.ok) await afterHabitAction(userId, habit);
     return res;
+  }
+
+  // ===================== ADMIN: borrar / agregar registros =====================
+  const adminTables = { habit: 'habit_logs', training: 'training_points', bonus: 'bonus_logs', workout: 'workouts' };
+
+  async function adminRefresh(userId, dateStr) {
+    if (dateStr === dateKey(today())) {
+      const habit = habits.find((h) => h.type === 'gym');
+      await afterHabitAction(userId, habit);
+    } else {
+      await fetchAll();
+    }
+  }
+
+  // Borra un registro (sus puntos dejan de contar). kind: 'habit' | 'training' | 'bonus' | 'workout'
+  async function adminDeleteRecord(kind, row) {
+    const { error: err } = await supabase.from(adminTables[kind]).delete().eq('id', row.id);
+    if (err) return { ok: false, error: err.message };
+    let dateStr = row.log_date;
+    if (kind === 'habit') {
+      const habit = habits.find((h) => h.id === row.habit_id);
+      if (habit) await undoSharedDouble(habit, row.log_date, row.user_id);
+    }
+    if (kind === 'workout') dateStr = dateKey(new Date(row.created_at));
+    await adminRefresh(row.user_id, dateStr);
+    return { ok: true };
+  }
+
+  // Agrega un hábito cumplido (o una sesión extra) en una fecha. Suma el valor que corresponde.
+  async function adminAddHabitLog(habit, userId, dateStr, opts = {}) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const base = habitValue(habit, userId, d, habits);
+    if (opts.extra) {
+      const points = Math.max(1, Math.round(base * EXTRA_SESSION_FACTOR));
+      const { error: err } = await supabase.from('training_points').insert([{ user_id: userId, kind: 'extra_' + habit.id, points, log_date: dateStr }]);
+      if (err) return { ok: false, error: err.message };
+      await adminRefresh(userId, dateStr);
+      return { ok: true, points };
+    }
+    let points = base;
+    let amount = null;
+    if (habit.kind === 'quantity') {
+      amount = Number(opts.amount) > 0 ? Number(opts.amount) : habit.target;
+      points = Math.round(base * Math.min(1, amount / habit.target));
+    }
+    const { error: err } = await supabase.from('habit_logs').upsert(
+      [{ habit_id: habit.id, user_id: userId, log_date: dateStr, points, amount }],
+      { onConflict: 'habit_id,user_id,log_date' }
+    );
+    if (err) return { ok: false, error: err.message };
+    await adminRefresh(userId, dateStr);
+    return { ok: true, points };
+  }
+
+  // Agrega una sesión de cardio en una fecha y (opcional) marca el hábito de cardio ese día.
+  async function adminAddCardio(userId, dateStr, minutes, km, activity, markHabit) {
+    const { error: err } = await supabase.from('workouts').insert([
+      { user_id: userId, type: 'cardio', exercise_name: activity || 'Trote', duration_min: Number(minutes) || 0, distance_km: Number(km) || 0, created_at: new Date(dateStr + 'T12:00:00').toISOString() }
+    ]);
+    if (err) return { ok: false, error: err.message };
+    let points = 0;
+    if (markHabit) {
+      const habit = habits.find((h) => h.type === 'run');
+      if (habit) {
+        const { data } = await supabase.from('habit_logs').select('points').eq('habit_id', habit.id).eq('user_id', userId).eq('log_date', dateStr).limit(1);
+        if (!(data && data[0] && data[0].points > 0)) {
+          const r = await adminAddHabitLog(habit, userId, dateStr);
+          points = r.points || 0;
+        }
+      }
+    }
+    await adminRefresh(userId, dateStr);
+    return { ok: true, points };
+  }
+
+  // Ajuste manual de puntos (positivo o negativo) con una nota.
+  async function adminAdjustPoints(userId, dateStr, points, note) {
+    const slugNote = (note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').slice(0, 24);
+    const kind = 'adj_' + Date.now() + (slugNote ? '_' + slugNote : '');
+    const { error: err } = await supabase.from('training_points').insert([{ user_id: userId, kind, points: Number(points), log_date: dateStr }]);
+    if (err) return { ok: false, error: err.message };
+    await adminRefresh(userId, dateStr);
+    return { ok: true };
   }
 
   async function autoCompleteHabitByType(type, userId) {
@@ -582,6 +673,10 @@ export function useAppData() {
       updateHabit,
       requestRecovery,
       extraSession,
+      adminDeleteRecord,
+      adminAddHabitLog,
+      adminAddCardio,
+      adminAdjustPoints,
       startExtraSession,
       cancelExtraSession,
       finishExtraSession,
