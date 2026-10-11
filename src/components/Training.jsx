@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { dateKey, fmtShort, today, DOW_LABELS } from '../lib/dates';
 import { supabase } from '../lib/supabase';
-import { trainDaysOf } from '../lib/commitments';
+import { trainDaysOf, getCommitment } from '../lib/commitments';
 import { habitValue } from '../lib/economy';
 import ExerciseImage from './ExerciseImage';
 import TimerTool from './TimerTool';
@@ -547,6 +547,24 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
   const autoProfile = profileOf(currentUser);
   const [profile, setProfile] = useState(autoProfile || 'nico');
   const myDays = trainDaysOf(uid);
+  // Rutina de hoy: tiene en cuenta si el hábito de gym se adelantó a hoy (o se movió a otro día).
+  const gymH0 = habits.find((h) => h.type === 'gym');
+  const tKey = dateKey(today());
+  const gymMoves = gymH0 ? (getCommitment(uid)?.moves || []).filter((m) => m.habitId === gymH0.id) : [];
+  const movedIn = gymMoves.find((m) => m.to === tKey && m.from !== tKey);
+  const movedAway = gymMoves.some((m) => m.from === tKey && m.to !== tKey);
+  const routineIdxToday = (() => {
+    if (!myDays) return -1;
+    const dow = today().getDay();
+    if (movedIn) {
+      // Adelantar = hacer hoy la rutina del día que se reemplaza; si no se puede deducir, la próxima.
+      const i = myDays.indexOf(new Date(movedIn.from + 'T00:00:00').getDay());
+      if (i >= 0) return i;
+      for (let k = 1; k <= 7; k++) { const j = myDays.indexOf((dow + k) % 7); if (j >= 0) return j; }
+      return -1;
+    }
+    return movedAway ? -1 : myDays.indexOf(dow);
+  })();
   const committedFreq = myDays ? Math.min(5, Math.max(2, myDays.length)) : null;
   const freqKey = 'training-freq-' + uid;
   const [freq, setFreq] = useState(() => committedFreq || Number(localStorage.getItem(freqKey)) || 3);
@@ -568,15 +586,14 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
   // Con compromiso: cada día de la rutina se asocia a un día de la semana.
   const weekdayFor = (i) => (myDays && myDays.length === freq ? myDays[i] : null);
   useEffect(() => {
-    const dow = today().getDay();
-    const i = myDays && myDays.length === freq ? myDays.indexOf(dow) : -1;
+    const i = myDays && myDays.length === freq ? routineIdxToday : -1;
     setDayIdx(i >= 0 ? i : 0);
     setEditing(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [freq, profile, uid]);
+  }, [freq, profile, uid, routineIdxToday]);
   // Usuarios (no admin) con compromiso: solo ven la rutina del día que les toca.
   const restricted = !isAdmin && !!myDays && myDays.length === freq;
-  const todayIdx = myDays ? myDays.indexOf(today().getDay()) : -1;
+  const todayIdx = myDays ? routineIdxToday : -1;
   const restDay = restricted && todayIdx < 0;
   const shownIdx = restricted ? Math.max(0, todayIdx) : dayIdx;
   const day = days[Math.max(0, Math.min(shownIdx, days.length - 1))];
@@ -735,7 +752,7 @@ export default function Training({ users, currentUser, workouts, actions, isAdmi
               </div>
             </>
           )}
-          {restricted && !restDay && <div className="flabel">Hoy · {NAMES[today().getDay()]}</div>}
+          {restricted && !restDay && <div className="flabel">Hoy · {NAMES[today().getDay()]}{movedIn ? ' (entrenamiento adelantado)' : ''}</div>}
 
           {restDay ? (
             <div className="log-card rest-card">
